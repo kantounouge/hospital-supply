@@ -1,0 +1,460 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>注文処理ページ | 物品管理システム</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;500;700&family=DM+Sans:wght@400;500;600&display=swap');
+:root{
+  --primary:#0d7a6b;--primary-lt:#e6f4f2;--primary-dk:#095c51;
+  --accent:#f0a500;--danger:#e03e3e;--success:#1a7a3a;--success-lt:#e6f4ec;
+  --bg:#f5f7fa;--card:#fff;--border:#dde3eb;--text:#1a2233;--muted:#6b7a93;
+  --shadow:0 2px 12px rgba(0,0,0,.07);--radius:10px;
+}
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Noto Sans JP',sans-serif;background:var(--bg);color:var(--text);min-height:100vh;}
+
+/* header */
+.header{background:var(--primary);color:#fff;height:56px;display:flex;align-items:center;
+  justify-content:space-between;padding:0 24px;position:sticky;top:0;z-index:100;
+  box-shadow:0 2px 8px rgba(0,0,0,.2);}
+.header-title{font-family:'DM Sans',sans-serif;font-size:17px;font-weight:600;}
+.back-btn{background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.3);
+  color:#fff;border-radius:6px;padding:5px 13px;font-size:12px;cursor:pointer;
+  font-family:inherit;font-weight:600;text-decoration:none;transition:background .15s;}
+.back-btn:hover{background:rgba(255,255,255,.25);}
+
+.page{max-width:1200px;margin:0 auto;padding:24px 16px 80px;}
+
+/* filter card */
+.filter-card{background:var(--card);border-radius:var(--radius);border:1px solid var(--border);
+  box-shadow:var(--shadow);padding:18px 20px;margin-bottom:20px;}
+.filter-row{display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;}
+.fg{display:flex;flex-direction:column;gap:4px;}
+.flabel{font-size:11px;font-weight:700;color:var(--muted);}
+.fc{padding:8px 12px;border:1.5px solid var(--border);border-radius:7px;
+  font-size:13px;font-family:inherit;color:var(--text);background:#fff;min-width:160px;}
+.fc:focus{outline:none;border-color:var(--primary);}
+
+/* buttons */
+.btn{display:inline-flex;align-items:center;gap:5px;padding:8px 14px;
+  border-radius:7px;font-size:13px;font-weight:700;cursor:pointer;border:none;
+  font-family:inherit;transition:all .15s;white-space:nowrap;}
+.btn:disabled{opacity:.5;cursor:not-allowed;}
+.btn-primary{background:var(--primary);color:#fff;}.btn-primary:hover:not(:disabled){background:var(--primary-dk);}
+.btn-outline{background:#fff;color:var(--primary);border:1.5px solid var(--primary);}.btn-outline:hover{background:var(--primary-lt);}
+.btn-gray{background:var(--bg);color:var(--text);border:1px solid var(--border);}.btn-gray:hover{background:#e8edf4;}
+.btn-success{background:var(--success);color:#fff;}.btn-success:hover{opacity:.85;}
+.btn-sm{padding:5px 10px;font-size:12px;}
+
+/* order card */
+.order-card{background:var(--card);border-radius:var(--radius);border:1px solid var(--border);
+  box-shadow:var(--shadow);margin-bottom:28px;overflow:hidden;page-break-inside:avoid;}
+.oc-head{background:linear-gradient(90deg,var(--primary),var(--primary-dk));
+  color:#fff;padding:14px 20px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;}
+.oc-title{font-size:15px;font-weight:700;display:flex;align-items:center;gap:10px;}
+.oc-meta{font-size:12px;opacity:.85;}
+.oc-body{padding:18px 20px;}
+
+/* info row */
+.info-row{display:flex;gap:20px;flex-wrap:wrap;margin-bottom:14px;
+  padding-bottom:14px;border-bottom:1px solid var(--border);}
+.info-item{display:flex;flex-direction:column;gap:2px;}
+.info-label{font-size:11px;font-weight:700;color:var(--muted);}
+.info-value{font-size:14px;font-weight:600;}
+
+/* table */
+.tbl-wrap{overflow-x:auto;border:1px solid var(--border);border-radius:8px;}
+table{width:100%;border-collapse:collapse;font-size:13px;}
+thead{background:var(--bg);}
+th{padding:9px 10px;text-align:left;font-weight:700;font-size:11px;
+  color:var(--muted);border-bottom:1px solid var(--border);white-space:nowrap;}
+td{padding:9px 10px;border-bottom:1px solid #f0f3f8;vertical-align:middle;}
+tr:last-child td{border-bottom:none;}
+tr.row-hover:hover td{background:#f8fafc;}
+.td-name{font-weight:600;}
+.td-muted{color:var(--muted);font-size:12px;}
+
+/* status badge */
+.badge{display:inline-flex;align-items:center;font-size:11px;font-weight:700;
+  border-radius:20px;padding:3px 9px;}
+.badge-uketsuke{background:#fff3cd;color:#856404;}
+.badge-hacchu  {background:var(--primary-lt);color:var(--primary-dk);}
+.badge-haraidashi{background:var(--success-lt);color:var(--success);}
+
+/* status select inline */
+.st-sel{padding:4px 8px;border:1px solid var(--border);border-radius:5px;
+  font-size:12px;font-family:inherit;background:#fff;cursor:pointer;}
+.st-sel:focus{outline:none;border-color:var(--primary);}
+
+/* bulk bar */
+.bulk-bar{display:flex;gap:8px;align-items:center;flex-wrap:wrap;
+  padding:10px 16px;background:var(--primary-lt);border-bottom:1px solid rgba(13,122,107,.15);}
+.bulk-label{font-size:13px;font-weight:700;color:var(--primary-dk);}
+.bulk-sel{padding:5px 10px;border:1.5px solid var(--primary);border-radius:6px;
+  font-size:12px;font-family:inherit;background:#fff;color:var(--primary);}
+
+/* hanko */
+.hanko-wrap{display:flex;gap:10px;margin-left:auto;}
+.hanko{text-align:center;font-size:10px;color:var(--muted);}
+.hanko-box{width:44px;height:44px;border:1px solid var(--border);border-radius:4px;margin-bottom:3px;}
+
+/* total row */
+.total-row td{background:var(--primary-lt);font-weight:700;}
+
+/* link */
+.link-cell a{font-size:11px;color:var(--primary);background:var(--primary-lt);
+  padding:2px 7px;border-radius:4px;text-decoration:none;}
+.link-cell a:hover{background:var(--primary);color:#fff;}
+
+/* print */
+@media print{
+  .header,.filter-card,.bulk-bar,.btn,.st-sel,.no-print{display:none!important;}
+  .page{padding:0;}
+  .order-card{box-shadow:none;border:1px solid #ccc;break-inside:avoid;}
+  @page{size:A4 landscape;margin:10mm 12mm;}
+}
+
+/* loading / empty */
+.loading{text-align:center;padding:48px;color:var(--muted);}
+.spinner{display:inline-block;width:22px;height:22px;border:3px solid var(--border);
+  border-top-color:var(--primary);border-radius:50%;animation:spin .7s linear infinite;vertical-align:middle;}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+/* toast */
+.toast-wrap{position:fixed;bottom:24px;right:24px;z-index:999;display:flex;flex-direction:column;gap:8px;}
+.toast{background:var(--text);color:#fff;border-radius:8px;padding:11px 16px;
+  font-size:13px;box-shadow:0 4px 16px rgba(0,0,0,.2);animation:ti .25s ease;min-width:200px;}
+.toast.success{background:var(--primary);}.toast.error{background:var(--danger);}
+@keyframes ti{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:translateY(0)}}
+</style>
+</head>
+<body>
+
+<header class="header">
+  <div class="header-title">📋 注文処理ページ</div>
+  <div class="header-right" style="display:flex;gap:8px;align-items:center">
+    <button class="btn btn-outline btn-sm no-print" onclick="window.print()" style="border-color:rgba(255,255,255,.5);color:#fff;background:rgba(255,255,255,.1)">🖨 印刷</button>
+    <a href="admin.html" class="back-btn">← 管理サイトへ</a>
+  </div>
+</header>
+
+<div class="page">
+
+  <!-- 絞り込みバー -->
+  <div class="filter-card no-print">
+    <div class="filter-row">
+      <div class="fg">
+        <span class="flabel">部署</span>
+        <select class="fc" id="f-dept"><option value="">全部署</option></select>
+      </div>
+      <div class="fg">
+        <span class="flabel">注文日</span>
+        <input type="date" class="fc" id="f-date">
+      </div>
+      <div class="fg">
+        <span class="flabel">ステータス</span>
+        <select class="fc" id="f-status">
+          <option value="">全ステータス</option>
+          <option value="受付済">受付済</option>
+          <option value="発注済">発注済</option>
+          <option value="払い出し済">払い出し済</option>
+        </select>
+      </div>
+      <div class="fg" style="justify-content:flex-end">
+        <span class="flabel">&nbsp;</span>
+        <div style="display:flex;gap:6px">
+          <button class="btn btn-primary" onclick="loadOrders()">🔍 検索</button>
+          <button class="btn btn-gray" onclick="clearFilter()">リセット</button>
+        </div>
+      </div>
+    </div>
+    <div style="font-size:12px;color:var(--muted);margin-top:10px">
+      💡 部署または注文日を指定して検索してください。ステータス変更はページ上で直接行えます。
+    </div>
+  </div>
+
+  <div id="result-area">
+    <div class="loading">
+      <div style="font-size:36px;margin-bottom:12px">📋</div>
+      <div>部署・注文日を指定して「検索」ボタンを押してください</div>
+    </div>
+  </div>
+
+</div>
+
+<div class="toast-wrap" id="toast-wrap"></div>
+
+<script>
+const GAS_URL = 'https://script.google.com/macros/s/AKfycbwfpVBiFHskxSb2076cWkk2td7oeojgrZ5YoBXkYIQ1X4MVVU39-m5W_UEH7btT5A5hlg/exec';
+
+// アクセス制御
+const _user = JSON.parse(sessionStorage.getItem('deptInfo') || '{}');
+if (!_user.id || _user.role !== 'admin') {
+  alert('このページは総務課のみアクセスできます。');
+  location.href = 'portal.html';
+}
+
+async function gasGet(params) {
+  const qs = Object.entries(params).map(([k,v]) =>
+    encodeURIComponent(k) + '=' + encodeURIComponent(
+      (v !== null && typeof v === 'object') ? JSON.stringify(v) : String(v)
+    )).join('&');
+  const res = await fetch(GAS_URL + '?' + qs);
+  if (!res.ok) throw new Error('HTTP ' + res.status);
+  return res.json();
+}
+
+let grouped = {};   // { orderId: [行データ] }
+let allRows  = [];  // 全行
+
+window.addEventListener('DOMContentLoaded', async () => {
+  await loadDepts();
+
+  // URLパラメータから自動検索
+  const p = new URLSearchParams(location.search);
+  if (p.get('dept'))   document.getElementById('f-dept').value   = p.get('dept');
+  if (p.get('date'))   document.getElementById('f-date').value   = p.get('date');
+  if (p.get('status')) document.getElementById('f-status').value = p.get('status');
+  if (p.get('dept') || p.get('date') || p.get('status')) loadOrders();
+});
+
+async function loadDepts() {
+  try {
+    const j = await gasGet({ action: 'getDepartmentsForAdmin' });
+    if (!j.success) return;
+    const sel = document.getElementById('f-dept');
+    j.data.forEach(d => {
+      const o = document.createElement('option');
+      o.value = d.name; o.textContent = d.name;
+      sel.appendChild(o);
+    });
+  } catch(e) { console.error(e); }
+}
+
+async function loadOrders() {
+  const dept   = document.getElementById('f-dept').value;
+  const date   = document.getElementById('f-date').value;
+  const status = document.getElementById('f-status').value;
+
+  const area = document.getElementById('result-area');
+  area.innerHTML = '<div class="loading"><span class="spinner"></span><div style="margin-top:12px">読み込み中...</div></div>';
+
+  try {
+    const j = await gasGet({ action:'getOrderHistoryFiltered', deptId:dept, date, status });
+    if (!j.success) throw new Error(j.error);
+    allRows = j.data;
+
+    if (!allRows.length) {
+      area.innerHTML = '<div class="loading"><div style="font-size:32px;margin-bottom:12px">📭</div>該当する注文がありません</div>';
+      return;
+    }
+
+    // 注文ID でグループ化
+    grouped = {};
+    allRows.forEach(r => {
+      if (!grouped[r.orderId]) grouped[r.orderId] = [];
+      grouped[r.orderId].push(r);
+    });
+
+    render();
+
+  } catch(e) {
+    area.innerHTML = '<div class="loading"><div style="font-size:32px;margin-bottom:12px">❌</div>' + esc(e.message) + '</div>';
+  }
+}
+
+function clearFilter() {
+  ['f-dept','f-date','f-status'].forEach(id => document.getElementById(id).value = '');
+  document.getElementById('result-area').innerHTML =
+    '<div class="loading"><div style="font-size:36px;margin-bottom:12px">📋</div><div>部署・注文日を指定して「検索」ボタンを押してください</div></div>';
+}
+
+// ============================================================
+//  描画
+// ============================================================
+function render() {
+  const orderIds = Object.keys(grouped);
+  const cards = orderIds.map(orderId => buildCard(orderId)).join('');
+  const summary = '<div style="font-size:12px;color:var(--muted);text-align:right;margin-top:8px">'
+    + allRows.length + '行 / ' + orderIds.length + '注文</div>';
+  document.getElementById('result-area').innerHTML = cards + summary;
+}
+
+function buildCard(orderId) {
+  const rows  = grouped[orderId];
+  const first = rows[0];
+  const dateStr  = fmtDate(first.orderedAt);
+  const dateOnly = fmtDateOnly(first.orderedAt);
+  const totalAmt = rows.reduce((s,r) => s + (Number(r.price)||0) * Number(r.qty), 0);
+  const eid = CSS.escape(orderId); // セレクタ用
+
+  // 商品行
+  const trs = rows.map((r, i) => {
+    const lineAmt = (Number(r.price)||0) * Number(r.qty);
+    const linkCell = r.link1
+      ? `<a href="${esc(r.link1)}" target="_blank">🔗 商品詳細</a>`
+      : '—';
+    const stBadge = statusBadge(r.status);
+    return `<tr class="row-hover" data-orderid="${esc(orderId)}" data-idx="${i}">
+      <td style="text-align:center;color:var(--muted);font-size:11px">${i+1}</td>
+      <td><div class="td-name">${esc(r.productName)}</div>
+          <div class="td-muted">${esc(r.spec||'')}</div></td>
+      <td class="td-muted">${esc(r.vendor||'—')}</td>
+      <td class="link-cell no-print">${linkCell}</td>
+      <td style="text-align:center;font-weight:600">${r.qty}</td>
+      <td style="text-align:center">${esc(r.unit||'')}</td>
+      <td style="text-align:right">${r.price ? '¥'+Number(r.price).toLocaleString() : '—'}</td>
+      <td style="text-align:right;font-weight:600">${lineAmt>0 ? '¥'+lineAmt.toLocaleString() : '—'}</td>
+      <td class="td-muted">${esc(r.note||'')}</td>
+      <td class="no-print">
+        <select class="st-sel" onchange="changeRowStatus('${esc(orderId)}',${i},this.value)">
+          ${['受付済','発注済','払い出し済'].map(s =>
+            `<option value="${s}"${r.status===s?' selected':''}>${s}</option>`).join('')}
+        </select>
+      </td>
+    </tr>`;
+  }).join('');
+
+  // 合計行
+  const totalTr = `<tr class="total-row">
+    <td colspan="7" style="text-align:right;padding:9px 10px;font-size:12px">合計金額（参考）</td>
+    <td style="text-align:right;padding:9px 10px;color:var(--primary)">¥${totalAmt.toLocaleString()}</td>
+    <td colspan="2"></td>
+  </tr>`;
+
+  // 一括変更バー（印刷時非表示）
+  const repStatus = [...new Set(rows.map(r=>r.status))];
+  const bulkBar = `<div class="bulk-bar no-print">
+    <span class="bulk-label">一括変更：</span>
+    <select class="bulk-sel" id="bulk-${esc(orderId)}">
+      ${['受付済','発注済','払い出し済'].map(s =>
+        `<option value="${s}"${repStatus.length===1&&repStatus[0]===s?' selected':''}>${s}</option>`).join('')}
+    </select>
+    <button class="btn btn-primary btn-sm" onclick="bulkUpdate('${esc(orderId)}')">この注文を一括変更</button>
+  </div>`;
+
+  return `<div class="order-card" id="card-${esc(orderId)}">
+    <!-- カードヘッダー -->
+    <div class="oc-head">
+      <div class="oc-title">📋 ${esc(first.deptName)}
+        <span style="font-size:11px;opacity:.8;font-weight:400">ID: ${esc(orderId)}</span>
+      </div>
+      <div class="oc-meta">${dateStr}　${rows.length}品目　合計 ¥${totalAmt.toLocaleString()}</div>
+    </div>
+    ${bulkBar}
+    <div class="oc-body">
+      <!-- 帳票ヘッダー情報 -->
+      <div class="info-row">
+        <div class="info-item">
+          <span class="info-label">請求部署</span>
+          <span class="info-value" style="color:var(--primary)">${esc(first.deptName)}</span>
+        </div>
+        <div class="info-item">
+          <span class="info-label">注文日</span>
+          <span class="info-value">${dateOnly}</span>
+        </div>
+        <div class="info-item">
+          <span class="info-label">注文ID</span>
+          <span class="info-value" style="font-size:12px;font-family:'DM Sans',sans-serif">${esc(orderId)}</span>
+        </div>
+        <div class="hanko-wrap">
+          <div class="hanko"><div class="hanko-box"></div>確認者印</div>
+          <div class="hanko"><div class="hanko-box"></div>担当者印</div>
+        </div>
+      </div>
+      <!-- 商品テーブル -->
+      <div class="tbl-wrap">
+        <table>
+          <thead><tr>
+            <th style="width:28px">No</th>
+            <th>品名 / 規格</th>
+            <th>発注先</th>
+            <th class="no-print">商品詳細</th>
+            <th style="text-align:center">数量</th>
+            <th style="text-align:center">単位</th>
+            <th style="text-align:right">単価</th>
+            <th style="text-align:right">金額</th>
+            <th>備考</th>
+            <th class="no-print">ステータス</th>
+          </tr></thead>
+          <tbody>${trs}</tbody>
+          <tfoot>${totalTr}</tfoot>
+        </table>
+      </div>
+    </div>
+  </div>`;
+}
+
+function statusBadge(s) {
+  const map = { '受付済':'badge-uketsuke','発注済':'badge-hacchu','払い出し済':'badge-haraidashi' };
+  return `<span class="badge ${map[s]||''}">${esc(s||'—')}</span>`;
+}
+
+// ============================================================
+//  ステータス変更
+// ============================================================
+
+// 行単位
+async function changeRowStatus(orderId, idx, newStatus) {
+  try {
+    const j = await gasGet({ action:'updateOrderStatus', orderId, status:newStatus });
+    if (!j.success) throw new Error(j.error);
+    // ローカル更新
+    allRows.forEach(r => { if (r.orderId===orderId) r.status = newStatus; });
+    grouped[orderId].forEach(r => r.status = newStatus);
+    showToast('✅ ステータスを「' + newStatus + '」に変更しました', 'success');
+  } catch(e) {
+    showToast('❌ 更新失敗: ' + esc(e.message), 'error');
+    loadOrders(); // 失敗時は再読み込み
+  }
+}
+
+// 注文単位（一括）
+async function bulkUpdate(orderId) {
+  const sel = document.getElementById('bulk-' + orderId);
+  if (!sel) return;
+  const newStatus = sel.value;
+  if (!confirm(`注文 ${orderId} の全商品を「${newStatus}」に変更しますか？`)) return;
+  try {
+    const j = await gasGet({ action:'updateOrderStatus', orderId, status:newStatus });
+    if (!j.success) throw new Error(j.error);
+    allRows.forEach(r => { if (r.orderId===orderId) r.status = newStatus; });
+    if (grouped[orderId]) grouped[orderId].forEach(r => r.status = newStatus);
+    render();
+    showToast('✅ 「' + newStatus + '」に一括変更しました', 'success');
+  } catch(e) {
+    showToast('❌ 更新失敗: ' + esc(e.message), 'error');
+  }
+}
+
+// ============================================================
+//  ユーティリティ
+// ============================================================
+function fmtDate(v) {
+  if (!v) return '—';
+  const d = new Date(v);
+  if (isNaN(d)) return String(v).slice(0,16);
+  return d.getFullYear()+'/'+String(d.getMonth()+1).padStart(2,'0')+'/'+String(d.getDate()).padStart(2,'0')
+    +' '+String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0');
+}
+function fmtDateOnly(v) {
+  if (!v) return '—';
+  const d = new Date(v);
+  if (isNaN(d)) return String(v).slice(0,10);
+  return d.getFullYear()+'年'+(d.getMonth()+1)+'月'+d.getDate()+'日';
+}
+function showToast(msg, type='') {
+  const w = document.getElementById('toast-wrap');
+  const el = document.createElement('div');
+  el.className = 'toast '+type; el.textContent = msg;
+  w.appendChild(el); setTimeout(()=>el.remove(), 4000);
+}
+function esc(s) {
+  return String(s??'').replace(/&/g,'&amp;').replace(/</g,'&lt;')
+    .replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+</script>
+</body>
+</html>

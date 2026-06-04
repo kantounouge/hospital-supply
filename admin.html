@@ -1,0 +1,1956 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>管理部門サイト | 物品管理システム</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;500;700&family=DM+Sans:wght@400;500;600&display=swap');
+  :root {
+    --primary:#0d7a6b; --primary-lt:#e6f4f2; --primary-dk:#095c51;
+    --accent:#f0a500; --danger:#e03e3e; --danger-lt:#fce8e8;
+    --success:#1a7a3a; --success-lt:#e6f4ec;
+    --bg:#f5f7fa; --card:#fff; --border:#dde3eb;
+    --text:#1a2233; --muted:#6b7a93;
+    --shadow:0 2px 12px rgba(0,0,0,.07); --radius:10px;
+  }
+  *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:'Noto Sans JP',sans-serif;background:var(--bg);color:var(--text);min-height:100vh}
+
+  /* ---- Header ---- */
+  .header{background:var(--primary);color:#fff;padding:0 24px;height:56px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:100;box-shadow:0 2px 8px rgba(0,0,0,.2)}
+  .header-title{font-family:'DM Sans',sans-serif;font-size:17px;font-weight:600}
+  .header-right{display:flex;align-items:center;gap:12px;font-size:13px;opacity:.9}
+  .header-right span{background:rgba(255,255,255,.2);border-radius:20px;padding:2px 12px}
+  .logout-btn{background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.3);color:#fff;border-radius:6px;padding:4px 12px;font-size:12px;cursor:pointer;font-family:inherit;transition:background .15s}
+  .logout-btn:hover{background:rgba(255,255,255,.25)}
+
+  /* ---- Tabs ---- */
+  .tab-bar{background:var(--card);border-bottom:1px solid var(--border);display:flex;overflow-x:auto;position:sticky;top:56px;z-index:99;box-shadow:0 1px 4px rgba(0,0,0,.04)}
+  .tab-btn{padding:14px 20px;font-size:13px;font-weight:600;cursor:pointer;color:var(--muted);border:none;background:none;border-bottom:2px solid transparent;margin-bottom:-1px;white-space:nowrap;font-family:inherit;transition:all .15s;display:flex;align-items:center;gap:6px}
+  .tab-btn:hover{color:var(--primary)}
+  .tab-btn.active{color:var(--primary);border-bottom-color:var(--primary)}
+  .tab-icon{font-size:15px}
+
+  /* ---- Layout ---- */
+  .page{max-width:1200px;margin:0 auto;padding:24px 16px 80px}
+  .tab-panel{display:none}.tab-panel.active{display:block}
+
+  /* ---- Card ---- */
+  .card{background:var(--card);border-radius:var(--radius);box-shadow:var(--shadow);border:1px solid var(--border);margin-bottom:20px}
+  .card-header{padding:14px 20px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px}
+  .card-title{font-size:14px;font-weight:700;color:var(--primary);display:flex;align-items:center;gap:8px}
+  .card-title::before{content:'';display:inline-block;width:4px;height:16px;background:var(--primary);border-radius:2px}
+  .card-body{padding:20px}
+
+  /* ---- Filter bar ---- */
+  .filter-bar{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+  .filter-bar select,.filter-bar input{padding:7px 10px;border:1px solid var(--border);border-radius:7px;font-size:13px;font-family:inherit;background:#fff;color:var(--text)}
+  .filter-bar select:focus,.filter-bar input:focus{outline:none;border-color:var(--primary)}
+  .filter-bar input{min-width:200px}
+
+  /* ---- Table ---- */
+  .tbl-wrap{overflow-x:auto;border-radius:8px;border:1px solid var(--border)}
+  table{width:100%;border-collapse:collapse;font-size:13px}
+  thead{background:var(--bg);position:sticky;top:0}
+  th{padding:10px 12px;text-align:left;font-weight:700;font-size:12px;color:var(--muted);border-bottom:1px solid var(--border);white-space:nowrap}
+  td{padding:10px 12px;border-bottom:1px solid #f0f3f8;vertical-align:middle}
+  tr:last-child td{border-bottom:none}
+  tr:hover td{background:#f8fafc}
+  .td-name{font-weight:600}
+  .td-muted{color:var(--muted);font-size:11px}
+  .td-link a{color:var(--primary);font-size:11px;text-decoration:none;background:var(--primary-lt);padding:2px 7px;border-radius:4px}
+  .td-link a:hover{background:var(--primary);color:#fff}
+
+  /* ---- Badges ---- */
+  .badge{display:inline-block;font-size:11px;font-weight:700;border-radius:20px;padding:2px 9px}
+  .badge-pending {background:#fff3cd;color:#856404}
+  .badge-approved{background:var(--success-lt);color:var(--success)}
+  .badge-rejected{background:var(--danger-lt);color:var(--danger)}
+  .badge-active  {background:var(--primary-lt);color:var(--primary-dk)}
+  .badge-inactive{background:#f0f3f8;color:var(--muted)}
+  .badge-stock   {background:#e8f4e8;color:#2d6a2d}
+
+  /* ---- Buttons ---- */
+  .btn{display:inline-flex;align-items:center;gap:5px;padding:6px 12px;border-radius:7px;font-size:12px;font-weight:700;cursor:pointer;border:none;font-family:inherit;transition:all .15s;white-space:nowrap}
+  .btn-primary{background:var(--primary);color:#fff}.btn-primary:hover{background:var(--primary-dk)}
+  .btn-danger {background:var(--danger);color:#fff}.btn-danger:hover{opacity:.85}
+  .btn-outline{background:#fff;color:var(--primary);border:1px solid var(--primary)}.btn-outline:hover{background:var(--primary-lt)}
+  .btn-gray   {background:var(--bg);color:var(--text);border:1px solid var(--border)}.btn-gray:hover{background:#e8edf4}
+  .btn-success{background:var(--success);color:#fff}.btn-success:hover{opacity:.85}
+  .btn-sm{padding:4px 9px;font-size:11px}
+  .btn:disabled{opacity:.5;cursor:not-allowed}
+
+  /* ---- Form ---- */
+  .form-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:14px}
+  .form-group{display:flex;flex-direction:column;gap:5px}
+  .form-group.full{grid-column:1/-1}
+  label.flabel{font-size:12px;font-weight:700;color:var(--muted)}
+  .req{color:var(--danger);margin-left:2px}
+  .form-control{padding:9px 12px;border:1.5px solid var(--border);border-radius:7px;font-size:13px;font-family:inherit;color:var(--text);background:#fff;transition:border-color .2s}
+  .form-control:focus{outline:none;border-color:var(--primary);box-shadow:0 0 0 3px var(--primary-lt)}
+  .form-control::placeholder{color:#b0bbc8}
+  select.form-control{appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%236b7a93' d='M6 8L1 3h10z'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 10px center;padding-right:28px}
+
+  /* ---- Stats bar ---- */
+  .stats-bar{display:flex;gap:12px;flex-wrap:wrap;margin-bottom:20px}
+  .stat-card{background:var(--card);border-radius:var(--radius);border:1px solid var(--border);padding:16px 20px;flex:1;min-width:140px}
+  .stat-label{font-size:11px;color:var(--muted);font-weight:700;text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px}
+  .stat-value{font-family:'DM Sans',sans-serif;font-size:26px;font-weight:600;color:var(--text)}
+  .stat-sub{font-size:11px;color:var(--muted);margin-top:2px}
+
+  /* ---- Modal ---- */
+  .modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:500;display:flex;align-items:center;justify-content:center;padding:16px}
+  .modal{background:var(--card);border-radius:14px;padding:28px;max-width:600px;width:100%;max-height:90vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,.25)}
+  .modal-title{font-size:17px;font-weight:700;margin-bottom:20px;display:flex;align-items:center;gap:8px}
+  .modal-footer{display:flex;gap:10px;margin-top:20px;justify-content:flex-end}
+  .btn-cancel-modal{padding:9px 18px;border:1px solid var(--border);background:var(--card);border-radius:7px;font-size:13px;cursor:pointer;font-family:inherit;font-weight:600;color:var(--muted)}
+  .btn-cancel-modal:hover{background:var(--bg)}
+
+  /* ---- Loading / Empty ---- */
+  .loading-row td{text-align:center;color:var(--muted);padding:32px}
+  .empty-state{text-align:center;padding:40px 20px;color:var(--muted)}
+  .empty-icon{font-size:36px;margin-bottom:10px}
+  .spinner{display:inline-block;width:18px;height:18px;border:2px solid var(--border);border-top-color:var(--primary);border-radius:50%;animation:spin .7s linear infinite;vertical-align:middle}
+  @keyframes spin{to{transform:rotate(360deg)}}
+
+  /* ---- Toast ---- */
+  .toast-wrap{position:fixed;bottom:24px;right:24px;z-index:999;display:flex;flex-direction:column;gap:8px}
+  .toast{background:var(--text);color:#fff;border-radius:8px;padding:11px 16px;font-size:13px;box-shadow:0 4px 16px rgba(0,0,0,.2);animation:toastIn .25s ease;min-width:220px}
+  .toast.success{background:var(--primary)}.toast.error{background:var(--danger)}
+  @keyframes toastIn{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:translateY(0)}}
+
+  /* ---- CSV buttons ---- */
+  .csv-bar{display:flex;gap:8px;align-items:center}
+
+  /* ---- Responsive ---- */
+  @media(max-width:600px){.form-grid{grid-template-columns:1fr}.stats-bar{flex-direction:column}.filter-bar{flex-direction:column;align-items:stretch}}
+
+/* カレンダープレビュー：日付セルツールチップ */
+.adm-cal-day {
+  aspect-ratio:1;
+  display:flex;align-items:center;justify-content:center;
+  font-size:12px;font-family:'DM Sans',sans-serif;
+  border-radius:6px;position:relative;cursor:default;
+}
+.adm-cal-day.has-ev { cursor:pointer; }
+.adm-cal-day.is-today { background:var(--primary);color:#fff;font-weight:600; }
+.adm-cal-day.other-m  { color:#c0c8d4; }
+.adm-cal-icons {
+  position:absolute;bottom:1px;left:50%;
+  transform:translateX(-50%);
+  display:flex;gap:1px;font-size:8px;line-height:1;
+}
+.adm-cal-tip {
+  display:none;
+  position:absolute;
+  bottom:calc(100% + 8px);
+  left:50%;transform:translateX(-50%);
+  background:#1a2233;color:#fff;
+  font-size:11px;line-height:1.6;
+  padding:8px 12px;border-radius:8px;
+  white-space:pre-line;min-width:150px;max-width:240px;
+  word-break:break-all;z-index:200;pointer-events:none;
+  box-shadow:0 4px 16px rgba(0,0,0,.3);text-align:left;
+}
+.adm-cal-tip::after {
+  content:'';position:absolute;
+  top:100%;left:50%;transform:translateX(-50%);
+  border:5px solid transparent;border-top-color:#1a2233;
+}
+.adm-cal-day.has-ev:hover .adm-cal-tip { display:block; }
+</style>
+</head>
+<body>
+
+<!-- ===== HEADER ===== -->
+<header class="header">
+  <div class="header-title">⚙️ 総務課サイト</div>
+  <div class="header-right">
+    <span id="admin-name-header">管理部門</span>
+    <button class="logout-btn" onclick="location.href='portal.html'">← ポータルへ</button>
+  </div>
+</header>
+
+<!-- ===== TAB BAR ===== -->
+<div class="tab-bar">
+  <button class="tab-btn active" onclick="switchTab('orders')"><span class="tab-icon">📋</span>注文管理</button>
+  <button class="tab-btn" onclick="switchTab('products')"><span class="tab-icon">📦</span>商品マスタ</button>
+  <button class="tab-btn" onclick="switchTab('departments')"><span class="tab-icon">🏥</span>部署管理</button>
+  <button class="tab-btn" onclick="switchTab('notices')"><span class="tab-icon">📢</span>お知らせ</button>
+  <button class="tab-btn" onclick="switchTab('calendar')"><span class="tab-icon">📅</span>カレンダー</button>
+  <button class="tab-btn" onclick="switchTab('vendors')"><span class="tab-icon">🏢</span>業者リスト</button>
+</div>
+
+<div class="page">
+
+<!-- ===================================================
+     TAB 1: 注文管理
+=================================================== -->
+<div class="tab-panel active" id="tab-orders">
+
+  <!-- 統計 -->
+  <div class="stats-bar" id="order-stats">
+    <div class="stat-card"><div class="stat-label">本日の注文</div><div class="stat-value" id="stat-today">—</div><div class="stat-sub">件</div></div>
+    <div class="stat-card"><div class="stat-label">今月の注文</div><div class="stat-value" id="stat-month">—</div><div class="stat-sub">件</div></div>
+    <div class="stat-card"><div class="stat-label">商品登録依頼</div><div class="stat-value" id="stat-requests">—</div><div class="stat-sub">件（未処理）</div></div>
+  </div>
+
+  <!-- 注文一覧 -->
+  <div class="card">
+    <div class="card-header">
+      <div class="card-title">注文一覧</div>
+      <div class="filter-bar">
+        <select id="order-dept-filter" onchange="filterOrders()">
+          <option value="">全部署</option>
+        </select>
+        <select id="order-status-filter" onchange="filterOrders()">
+          <option value="">全ステータス</option>
+          <option value="受付済">受付済</option>
+          <option value="発注済">発注済</option>
+          <option value="払い出し済">払い出し済</option>
+        </select>
+        <input type="date" id="order-date-filter" onchange="filterOrders()">
+        <button class="btn btn-gray btn-sm" onclick="clearOrderFilter()">リセット</button>
+        <button class="btn btn-sm" id="toggle-paid-btn"
+          onclick="toggleShowPaid()"
+          style="background:#f0f4f8;border:1px solid var(--border);color:var(--muted)">
+          👁 払い出し済を表示
+        </button>
+        <a href="order-detail.html" class="btn btn-primary btn-sm">📋 注文処理ページへ</a>
+        <button class="btn btn-outline btn-sm" onclick="exportOrderCSV()">📥 CSV出力</button>
+      </div>
+    </div>
+    <div class="card-body" style="padding:0">
+      <div class="tbl-wrap">
+        <table id="order-table">
+          <thead><tr>
+            <th>注文ID</th><th>注文日時</th><th>部署</th><th>品名</th>
+            <th>数量</th><th>単位</th><th>注文先</th><th>ステータス</th><th>操作</th>
+          </tr></thead>
+          <tbody id="order-tbody">
+            <tr class="loading-row"><td colspan="9"><span class="spinner"></span> 読み込み中...</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- 商品登録依頼 -->
+  <div class="card">
+    <div class="card-header">
+      <div class="card-title">商品登録依頼</div>
+      <div class="filter-bar">
+        <select id="req-status-filter" onchange="filterRequests()">
+          <option value="">全ステータス</option>
+          <option value="未処理">未処理</option>
+          <option value="承認済">承認済</option>
+          <option value="却下">却下</option>
+        </select>
+      </div>
+    </div>
+    <div class="card-body" style="padding:0">
+      <div class="tbl-wrap">
+        <table id="req-table">
+          <thead><tr>
+            <th>受付ID</th><th>受付日時</th><th>部署</th><th>商品名</th>
+            <th>型番</th><th>URL</th><th>備考</th><th>ステータス</th><th>操作</th>
+          </tr></thead>
+          <tbody id="req-tbody">
+            <tr class="loading-row"><td colspan="9"><span class="spinner"></span> 読み込み中...</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- 棚卸しリスト出力 -->
+  <div class="card">
+    <div class="card-header">
+      <div class="card-title">棚卸しリスト出力</div>
+    </div>
+    <div class="card-body">
+      <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:center">
+        <button class="btn btn-outline" onclick="exportInventoryCSV('warehouse')">📥 倉庫在庫リスト（管理部門用）</button>
+        <div style="display:flex;gap:8px;align-items:center">
+          <select id="inv-dept-select" class="form-control" style="min-width:160px">
+            <option value="">部署を選択...</option>
+          </select>
+          <button class="btn btn-outline" onclick="exportInventoryCSV('department')">📥 部署別発注履歴リスト</button>
+        </div>
+      </div>
+      <div style="font-size:12px;color:var(--muted);margin-top:10px">
+        ※ 各リストはCSVファイルとしてダウンロードされます。Excelで開いて数量を記入してください。
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ===================================================
+     TAB 2: 商品マスタ
+=================================================== -->
+<div class="tab-panel" id="tab-products">
+  <div class="card">
+    <div class="card-header">
+      <div class="card-title">商品マスタ管理</div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <div class="filter-bar">
+          <input type="text" id="product-search" placeholder="品名・型番・種別で検索..." oninput="filterProducts()" style="min-width:220px">
+          <select id="product-cat-filter" onchange="filterProducts()">
+            <option value="">全種別</option>
+          </select>
+          <select id="product-stock-filter" onchange="filterProducts()">
+            <option value="">在庫フラグ全て</option>
+            <option value="true">在庫管理対象</option>
+            <option value="false">対象外</option>
+          </select>
+        </div>
+        <div class="csv-bar">
+          <button class="btn btn-primary" onclick="openProductModal(null)">＋ 新規登録</button>
+          <button class="btn btn-outline" onclick="exportProductCSV()">📥 CSV出力</button>
+          <label class="btn btn-outline" style="cursor:pointer">📤 CSV取込 <input type="file" accept=".csv" onchange="importProductCSV(event)" style="display:none"></label>
+        </div>
+      </div>
+    </div>
+    <div class="card-body" style="padding:0">
+      <div style="font-size:12px;color:var(--muted);padding:10px 16px;border-bottom:1px solid var(--border)">
+        <span id="product-count-label">読み込み中...</span>
+      </div>
+      <div class="tbl-wrap" style="max-height:500px;overflow-y:auto">
+        <table id="product-table">
+          <thead><tr>
+            <th>商品コード</th><th>種別</th><th>品名</th><th>型番</th><th>規格</th>
+            <th>単位</th><th>金額</th><th>注文先</th><th>在庫管理</th><th>有効</th><th>操作</th>
+          </tr></thead>
+          <tbody id="product-tbody">
+            <tr class="loading-row"><td colspan="11"><span class="spinner"></span> 読み込み中...</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ===================================================
+     TAB 3: 部署管理
+=================================================== -->
+<div class="tab-panel" id="tab-departments">
+  <div class="card">
+    <div class="card-header">
+      <div class="card-title">部署アカウント管理</div>
+      <button class="btn btn-primary" onclick="openDeptModal(null)">＋ 部署を追加</button>
+    </div>
+    <div class="card-body" style="padding:0">
+      <div class="tbl-wrap">
+        <table id="dept-table">
+          <thead><tr>
+            <th>部署ID</th><th>部署名</th><th>ログインID</th><th>メールアドレス</th><th>状態</th><th>操作</th>
+          </tr></thead>
+          <tbody id="dept-tbody">
+            <tr class="loading-row"><td colspan="6"><span class="spinner"></span> 読み込み中...</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ===================================================
+     TAB 4: お知らせ
+=================================================== -->
+<div class="tab-panel" id="tab-notices">
+  <div class="card">
+    <div class="card-header">
+      <div class="card-title">お知らせ管理</div>
+      <button class="btn btn-primary" onclick="openNoticeModal(null)">＋ 新規投稿</button>
+    </div>
+    <div class="card-body" style="padding:0">
+      <div class="tbl-wrap">
+        <table>
+          <thead><tr>
+            <th>掲載日</th><th>タイトル</th><th>本文（抜粋）</th><th>重要度</th><th>表示</th><th>操作</th>
+          </tr></thead>
+          <tbody id="notice-tbody">
+            <tr class="loading-row"><td colspan="6"><span class="spinner"></span> 読み込み中...</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ===================================================
+     TAB 5: カレンダー
+=================================================== -->
+<div class="tab-panel" id="tab-calendar">
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px">
+
+    <!-- 左：カレンダープレビュー -->
+    <div class="card">
+      <div class="card-header">
+        <div class="card-title">カレンダープレビュー</div>
+        <div style="display:flex;gap:6px;align-items:center">
+          <button class="btn btn-gray btn-sm" onclick="calAdminPrev()">‹</button>
+          <span id="cal-admin-title" style="font-size:13px;font-weight:700;min-width:80px;text-align:center">—</span>
+          <button class="btn btn-gray btn-sm" onclick="calAdminNext()">›</button>
+        </div>
+      </div>
+      <div class="card-body" style="padding:14px">
+        <div style="display:grid;grid-template-columns:repeat(7,1fr);margin-bottom:6px">
+          <span style="text-align:center;font-size:11px;font-weight:700;color:#e03e3e">日</span>
+          <span style="text-align:center;font-size:11px;font-weight:700;color:var(--muted)">月</span>
+          <span style="text-align:center;font-size:11px;font-weight:700;color:var(--muted)">火</span>
+          <span style="text-align:center;font-size:11px;font-weight:700;color:var(--muted)">水</span>
+          <span style="text-align:center;font-size:11px;font-weight:700;color:var(--muted)">木</span>
+          <span style="text-align:center;font-size:11px;font-weight:700;color:var(--muted)">金</span>
+          <span style="text-align:center;font-size:11px;font-weight:700;color:#1a6ae0">土</span>
+        </div>
+        <div id="cal-admin-days" style="display:grid;grid-template-columns:repeat(7,1fr);gap:2px"></div>
+        <div id="cal-admin-events" style="margin-top:12px;display:flex;flex-direction:column;gap:6px"></div>
+      </div>
+    </div>
+
+    <!-- 右：イベント一覧 -->
+    <div class="card">
+      <div class="card-header">
+        <div class="card-title">イベント一覧</div>
+        <button class="btn btn-primary" onclick="openCalModal(null)">＋ 追加</button>
+      </div>
+      <div class="card-body" style="padding:0">
+        <div class="tbl-wrap" style="max-height:400px;overflow-y:auto">
+          <table>
+            <thead><tr>
+              <th>日付</th><th>タイトル</th><th>種別</th><th>備考</th><th>操作</th>
+            </tr></thead>
+            <tbody id="cal-tbody">
+              <tr class="loading-row"><td colspan="5"><span class="spinner"></span> 読み込み中...</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<!-- ===================================================
+     TAB 6: 業者リスト
+=================================================== -->
+<div class="tab-panel" id="tab-vendors">
+  <div class="card">
+    <div class="card-header">
+      <div class="card-title">業者リスト管理</div>
+      <button class="btn btn-primary" onclick="openVendorModal(null)">＋ 業者を追加</button>
+    </div>
+    <div class="card-body" style="padding:0">
+      <div class="tbl-wrap">
+        <table id="vendor-table">
+          <thead><tr>
+            <th>業者ID</th><th>業者名</th><th>担当者</th><th>電話番号</th><th>メール</th><th>サイト</th><th>備考</th><th>操作</th>
+          </tr></thead>
+          <tbody id="vendor-tbody">
+            <tr class="loading-row"><td colspan="7"><span class="spinner"></span> 読み込み中...</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+
+</div><!-- /.page -->
+
+<!-- ===================================================
+     MODALS
+=================================================== -->
+
+<!-- 商品編集モーダル -->
+<div class="modal-overlay" id="product-modal" style="display:none" onclick="if(event.target===this)closeModal('product-modal')">
+  <div class="modal">
+    <div class="modal-title" id="product-modal-title">📦 商品登録・編集</div>
+    <div class="form-grid">
+      <input type="hidden" id="pm-code">
+      <div class="form-group"><label class="flabel">種別コード<span class="req">*</span></label>
+        <select class="form-control" id="pm-category">
+          <option value="">選択...</option>
+          <option>医療材料</option><option>文具</option><option>衛生材料</option>
+          <option>日用品</option><option>OA用品</option><option>その他</option>
+        </select></div>
+      <div class="form-group"><label class="flabel">品名<span class="req">*</span></label>
+        <input class="form-control" id="pm-name" placeholder="例：アルコール綿球"></div>
+      <div class="form-group"><label class="flabel">型番</label>
+        <input class="form-control" id="pm-model" placeholder="例：ABC-123"></div>
+      <div class="form-group"><label class="flabel">規格</label>
+        <input class="form-control" id="pm-spec" placeholder="例：200枚入"></div>
+      <div class="form-group"><label class="flabel">入数</label>
+        <input class="form-control" type="number" id="pm-qtyPerBox" placeholder="例：1"></div>
+      <div class="form-group"><label class="flabel">単位<span class="req">*</span></label>
+        <select class="form-control" id="pm-unit">
+          <option value="">選択...</option>
+          <option>箱</option><option>本</option><option>個</option>
+          <option>枚</option><option>袋</option><option>パック</option><option>セット</option>
+        </select></div>
+      <div class="form-group"><label class="flabel">金額（参考単価）</label>
+        <input class="form-control" type="number" id="pm-price" placeholder="例：500"></div>
+      <div class="form-group"><label class="flabel">注文先</label>
+        <input class="form-control" id="pm-vendor" placeholder="例：アスクル"></div>
+      <div class="form-group"><label class="flabel">発注単位</label>
+        <input class="form-control" type="number" id="pm-orderUnit" placeholder="例：1"></div>
+      <div class="form-group"><label class="flabel">在庫管理フラグ</label>
+        <select class="form-control" id="pm-stockFlag">
+          <option value="false">対象外</option><option value="true">管理対象</option>
+        </select></div>
+      <div class="form-group"><label class="flabel">在庫定数</label>
+        <input class="form-control" type="number" id="pm-stockPar" placeholder="例：5"></div>
+      <div class="form-group"><label class="flabel">保管場所</label>
+        <input class="form-control" id="pm-location" placeholder="例：棚A-3"></div>
+      <div class="form-group full"><label class="flabel">商品リンク①（主）</label>
+        <input class="form-control" id="pm-link1" placeholder="https://..."></div>
+      <div class="form-group full"><label class="flabel">商品リンク②（予備）</label>
+        <input class="form-control" id="pm-link2" placeholder="https://..."></div>
+      <div class="form-group full"><label class="flabel">備考</label>
+        <input class="form-control" id="pm-note" placeholder="自由記入"></div>
+      <div class="form-group"><label class="flabel">有効フラグ</label>
+        <select class="form-control" id="pm-active">
+          <option value="true">有効</option><option value="false">廃番・無効</option>
+        </select></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-cancel-modal" onclick="closeModal('product-modal')">キャンセル</button>
+      <button class="btn btn-primary" id="pm-save-btn" onclick="saveProduct()">💾 保存</button>
+    </div>
+  </div>
+</div>
+
+<!-- 部署編集モーダル -->
+<div class="modal-overlay" id="dept-modal" style="display:none" onclick="if(event.target===this)closeModal('dept-modal')">
+  <div class="modal" style="max-width:420px">
+    <div class="modal-title" id="dm-modal-title">🏥 部署アカウント</div>
+    <div class="form-grid" style="grid-template-columns:1fr">
+      <input type="hidden" id="dm-id">
+      <div class="form-group"><label class="flabel">部署名<span class="req">*</span></label>
+        <input class="form-control" id="dm-name" placeholder="例：7B病棟"></div>
+      <div class="form-group"><label class="flabel">ログインID<span class="req">*</span></label>
+        <input class="form-control" id="dm-username" placeholder="例：7b-byoto"></div>
+      <div class="form-group"><label class="flabel">パスワード<span class="req">*</span></label>
+        <input class="form-control" type="password" id="dm-password" placeholder="新規：必須 / 編集：空欄で変更なし"></div>
+      <div class="form-group"><label class="flabel">メールアドレス</label>
+        <input class="form-control" type="email" id="dm-email" placeholder="dept@hospital.jp"></div>
+      <div class="form-group"><label class="flabel">状態</label>
+        <select class="form-control" id="dm-active">
+          <option value="true">有効</option><option value="false">無効</option>
+        </select></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-danger btn-sm" id="dm-delete-btn" style="display:none;margin-right:auto" onclick="deleteDept()">🗑 削除（無効化）</button>
+      <button class="btn-cancel-modal" onclick="closeModal('dept-modal')">キャンセル</button>
+      <button class="btn btn-primary" id="dm-save-btn" onclick="saveDept()">💾 保存</button>
+    </div>
+  </div>
+</div>
+
+<!-- お知らせモーダル -->
+<div class="modal-overlay" id="notice-modal" style="display:none" onclick="if(event.target===this)closeModal('notice-modal')">
+  <div class="modal" style="max-width:500px">
+    <div class="modal-title" id="nm-modal-title">📢 お知らせ投稿</div>
+    <div class="form-grid" style="grid-template-columns:1fr">
+      <input type="hidden" id="nm-id">
+      <div class="form-group"><label class="flabel">タイトル<span class="req">*</span></label>
+        <input class="form-control" id="nm-title" placeholder="例：5月の発注締め切り日について"></div>
+      <div class="form-group"><label class="flabel">掲載日<span class="req">*</span></label>
+        <input class="form-control" type="date" id="nm-date"></div>
+      <div class="form-group"><label class="flabel">重要度</label>
+        <select class="form-control" id="nm-priority">
+          <option value="normal">通常</option><option value="high">🔴 重要</option>
+        </select></div>
+      <div class="form-group"><label class="flabel">本文</label>
+        <textarea class="form-control" id="nm-body" rows="4" placeholder="本文を入力。URL（https://...）は自動でリンクになります"></textarea></div>
+      <div class="form-group"><label class="flabel">添付リンク（任意）
+        <span style="font-size:10px;color:var(--muted);font-weight:400;margin-left:4px">ポータルに「詳細はこちら」ボタンを表示</span>
+      </label>
+        <div style="display:flex;gap:6px">
+          <input class="form-control" id="nm-link-url" placeholder="https://..." style="flex:1">
+          <input class="form-control" id="nm-link-label" placeholder="ボタン名（省略可）" style="width:130px">
+        </div>
+      </div>
+      <div class="form-group"><label class="flabel">表示状態</label>
+        <select class="form-control" id="nm-active">
+          <option value="true">表示する</option><option value="false">非表示（下書き）</option>
+        </select></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-cancel-modal" onclick="closeModal('notice-modal')">キャンセル</button>
+      <button class="btn btn-danger btn-sm" id="nm-delete-btn" onclick="deleteNotice()" style="display:none">🗑 削除</button>
+      <button class="btn btn-primary" onclick="saveNotice()">💾 保存</button>
+    </div>
+  </div>
+</div>
+
+<!-- カレンダーイベントモーダル -->
+<div class="modal-overlay" id="cal-modal" style="display:none" onclick="if(event.target===this)closeModal('cal-modal')">
+  <div class="modal" style="max-width:460px">
+    <div class="modal-title" id="cal-modal-title">📅 イベント追加</div>
+    <div class="form-grid" style="grid-template-columns:1fr">
+      <input type="hidden" id="cm-id">
+      <div class="form-group"><label class="flabel">タイトル<span class="req">*</span></label>
+        <input class="form-control" id="cm-title" placeholder="例：6月 発注締め切り"></div>
+      <div class="form-group"><label class="flabel">日付<span class="req">*</span></label>
+        <input class="form-control" type="date" id="cm-date"></div>
+      <div class="form-group"><label class="flabel">種別</label>
+        <select class="form-control" id="cm-type">
+          <option value="deadline">⚠️ 発注締め切り</option>
+          <option value="delivery">📦 払い出し日</option>
+          <option value="other">📅 その他</option>
+        </select></div>
+      <div class="form-group"><label class="flabel">備考</label>
+        <input class="form-control" id="cm-note" placeholder="補足情報があれば入力"></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-cancel-modal" onclick="closeModal('cal-modal')">キャンセル</button>
+      <button class="btn btn-danger btn-sm" id="cm-delete-btn" onclick="deleteCalEvent()" style="display:none">🗑 削除</button>
+      <button class="btn btn-primary" onclick="saveCalEvent()">💾 保存</button>
+    </div>
+  </div>
+</div>
+
+<!-- 業者モーダル -->
+<div class="modal-overlay" id="vendor-modal" style="display:none" onclick="if(event.target===this)closeModal('vendor-modal')">
+  <div class="modal" style="max-width:520px">
+    <div class="modal-title" id="vm-modal-title">🏢 業者登録</div>
+    <div class="form-grid" style="grid-template-columns:1fr 1fr">
+      <input type="hidden" id="vm-id">
+      <div class="form-group full"><label class="flabel">業者名<span class="req">*</span></label>
+        <input class="form-control" id="vm-name" placeholder="例：アスクル株式会社"></div>
+      <div class="form-group"><label class="flabel">担当者名</label>
+        <input class="form-control" id="vm-contact" placeholder="例：山田 太郎"></div>
+      <div class="form-group"><label class="flabel">電話番号</label>
+        <input class="form-control" id="vm-tel" placeholder="例：03-XXXX-XXXX"></div>
+      <div class="form-group full"><label class="flabel">メールアドレス</label>
+        <input class="form-control" type="email" id="vm-email"></div>
+      <div class="form-group full"><label class="flabel">発注サイトURL</label>
+        <div style="display:flex;gap:6px;align-items:center">
+          <input class="form-control" id="vm-url" placeholder="https://..." style="flex:1">
+          <a id="vm-url-link" href="#" target="_blank" style="display:none;white-space:nowrap;font-size:12px;color:var(--primary);background:var(--primary-lt);padding:5px 10px;border-radius:6px;text-decoration:none">🔗 開く</a>
+        </div>
+      </div>
+      <div class="form-group"><label class="flabel">ログインID</label>
+        <input class="form-control" id="vm-login-id" placeholder="ログインIDがあれば"></div>
+      <div class="form-group"><label class="flabel">パスワード
+        <button type="button" onclick="toggleVmPass()" style="margin-left:6px;font-size:10px;padding:1px 6px;border:1px solid var(--border);border-radius:4px;background:var(--bg);cursor:pointer;font-family:inherit">表示</button>
+      </label>
+        <input class="form-control" type="password" id="vm-login-pass" placeholder="パスワードがあれば"></div>
+      <div class="form-group full"><label class="flabel">備考</label>
+        <input class="form-control" id="vm-note"></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-danger btn-sm" id="vm-delete-btn" style="display:none;margin-right:auto" onclick="deleteVendor()">🗑 削除</button>
+      <button class="btn-cancel-modal" onclick="closeModal('vendor-modal')">キャンセル</button>
+      <button class="btn btn-primary" onclick="saveVendor()">💾 保存</button>
+    </div>
+  </div>
+</div>
+
+<!-- ステータス更新モーダル -->
+<div class="modal-overlay" id="status-modal" style="display:none" onclick="if(event.target===this)closeModal('status-modal')">
+  <div class="modal" style="max-width:380px">
+    <div class="modal-title">🔄 ステータス更新</div>
+    <input type="hidden" id="status-order-id">
+    <div class="form-group" style="margin-bottom:16px">
+      <label class="flabel">注文ID</label>
+      <div style="font-size:13px;font-weight:700;margin-top:4px" id="status-order-id-label"></div>
+    </div>
+    <div class="form-group">
+      <label class="flabel">新しいステータス</label>
+      <select class="form-control" id="status-select">
+        <option value="受付済">受付済</option>
+        <option value="発注済">発注済</option>
+        <option value="払い出し済">払い出し済</option>
+      </select>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-cancel-modal" onclick="closeModal('status-modal')">キャンセル</button>
+      <button class="btn btn-primary" id="status-save-btn" onclick="updateOrderStatus()">更新</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast-wrap" id="toast-wrap"></div>
+<script>
+const GAS_URL = 'https://script.google.com/macros/s/AKfycbwfpVBiFHskxSb2076cWkk2td7oeojgrZ5YoBXkYIQ1X4MVVU39-m5W_UEH7btT5A5hlg/exec';
+
+// ── アクセス制御：管理者以外はポータルに戻す ──
+(function() {
+  var info = sessionStorage.getItem('deptInfo');
+  if (!info) {
+    alert('ログインが必要です。');
+    location.href = 'portal.html';
+    return;
+  }
+  var user = JSON.parse(info);
+  if (user.role !== 'admin') {
+    alert('このページは総務課のみアクセスできます。');
+    location.href = 'portal.html';
+  }
+})();
+// ── GAS通信ヘルパー（CORS対策）──
+async function gasGet(params) {
+  const qs = Object.entries(params)
+    .map(([k,v]) => encodeURIComponent(k)+'='+encodeURIComponent(
+      (v !== null && typeof v === 'object') ? JSON.stringify(v) : String(v)
+    )).join('&');
+  const res = await fetch(GAS_URL + '?' + qs);
+  if (!res.ok) throw new Error('HTTPエラー: ' + res.status);
+  return res.json();
+}
+
+
+// ============================================================
+//  状態
+// ============================================================
+let allOrders = [], allRequests = [], allProducts = [], allDepts = [], allVendors = [];
+let filteredOrders = [], filteredProducts = [];
+let showPaidOrders = false; // 払い出し済を表示するか（デフォルト非表示）
+
+// ============================================================
+//  初期化
+// ============================================================
+window.addEventListener('DOMContentLoaded', () => {
+  setTodayDate();
+  loadAll();
+
+  // 商品検索ボックス：Enterキー対応
+  var ps = document.getElementById('product-search');
+  if (ps) {
+    ps.addEventListener('keydown', function(e) {
+      if (e.key === 'Enter') { e.preventDefault(); filterProducts(); }
+    });
+  }
+});
+
+async function loadAll() {
+  await Promise.all([loadOrders(), loadProducts(), loadDepts(), loadVendors(), loadNotices(), loadCalendarEvents()]);
+}
+
+// ============================================================
+//  タブ切り替え
+// ============================================================
+function switchTab(name) {
+  var names = ['orders','products','departments','notices','calendar','vendors'];
+  document.querySelectorAll('.tab-btn').forEach(function(btn, i) {
+    btn.classList.toggle('active', names[i] === name);
+  });
+  document.querySelectorAll('.tab-panel').forEach(function(p) { p.classList.remove('active'); });
+  document.getElementById('tab-' + name).classList.add('active');
+  // カレンダータブを開いたときにプレビューを描画
+  if (name === 'calendar') renderAdminCalendar();
+}
+
+// ============================================================
+//  TAB1: 注文管理
+// ============================================================
+async function loadOrders() {
+  try {
+    const [ordersJson, reqsJson] = await Promise.all([
+      gasGet({ action: 'getOrderHistory' }),
+      gasGet({ action: 'getProductRequests' })
+    ]);
+
+    if (ordersJson.success) {
+      allOrders = ordersJson.data;
+      filteredOrders = [...allOrders];
+      buildDeptFilter();
+      renderOrders();
+      updateStats();
+    }
+    if (reqsJson.success) {
+      allRequests = reqsJson.data;
+      renderRequests();
+      document.getElementById('stat-requests').textContent =
+        allRequests.filter(r => r.status === '未処理').length;
+    }
+  } catch (e) { console.error(e); }
+}
+
+function buildDeptFilter() {
+  const depts = [...new Set(allOrders.map(o => o.deptName))].sort();
+  const sel = document.getElementById('order-dept-filter');
+  sel.innerHTML = '<option value="">全部署</option>' +
+    depts.map(d => `<option>${esc(d)}</option>`).join('');
+
+  const invSel = document.getElementById('inv-dept-select');
+  invSel.innerHTML = '<option value="">部署を選択...</option>' +
+    depts.map(d => `<option>${esc(d)}</option>`).join('');
+}
+
+function updateStats() {
+  const today = new Date().toDateString();
+  const thisMonth = new Date().getMonth();
+  document.getElementById('stat-today').textContent =
+    allOrders.filter(o => new Date(o.orderedAt).toDateString() === today).length;
+  document.getElementById('stat-month').textContent =
+    allOrders.filter(o => new Date(o.orderedAt).getMonth() === thisMonth).length;
+}
+
+function filterOrders() {
+  var dept   = document.getElementById('order-dept-filter').value;
+  var status = document.getElementById('order-status-filter').value;
+  var date   = document.getElementById('order-date-filter').value;
+  filteredOrders = allOrders.filter(function(o) {
+    // 払い出し済は非表示モードのときスキップ（ステータス指定がある場合は除外しない）
+    if (!showPaidOrders && !status && o.status === '払い出し済') return false;
+    if (dept   && o.deptName !== dept)   return false;
+    if (status && o.status   !== status) return false;
+    if (date) {
+      var od = new Date(o.orderedAt);
+      var fd = new Date(date);
+      if (od.toDateString() !== fd.toDateString()) return false;
+    }
+    return true;
+  });
+  renderOrders();
+}
+
+function toggleShowPaid() {
+  showPaidOrders = !showPaidOrders;
+  var btn = document.getElementById('toggle-paid-btn');
+  if (showPaidOrders) {
+    btn.style.background = 'var(--primary)';
+    btn.style.color      = '#fff';
+    btn.style.border     = '1px solid var(--primary)';
+    btn.textContent      = '👁 払い出し済を非表示';
+  } else {
+    btn.style.background = '#f0f4f8';
+    btn.style.color      = 'var(--muted)';
+    btn.style.border     = '1px solid var(--border)';
+    btn.textContent      = '👁 払い出し済を表示';
+  }
+  filterOrders();
+}
+
+function clearOrderFilter() {
+  document.getElementById('order-dept-filter').value  = '';
+  document.getElementById('order-status-filter').value = '';
+  document.getElementById('order-date-filter').value  = '';
+  filteredOrders = [...allOrders];
+  renderOrders();
+}
+
+function renderOrders() {
+  const tbody = document.getElementById('order-tbody');
+  if (filteredOrders.length === 0) {
+    tbody.innerHTML = `<tr><td colspan="9" style="text-align:center;color:var(--muted);padding:24px">表示する注文がありません</td></tr>`;
+    return;
+  }
+  tbody.innerHTML = filteredOrders.map(o => `
+    <tr>
+      <td style="font-family:'DM Sans',sans-serif;font-size:11px;color:var(--muted)">${esc(o.orderId)}</td>
+      <td class="td-muted">${formatDate(o.orderedAt)}</td>
+      <td class="td-name">${esc(o.deptName)}</td>
+      <td>
+        <div class="td-name">${esc(o.productName)}</div>
+        <div class="td-muted">${esc(o.spec||'')}</div>
+      </td>
+      <td style="font-family:'DM Sans',sans-serif;font-weight:600">${o.qty}</td>
+      <td>${esc(o.unit||'')}</td>
+      <td class="td-muted">${esc(o.vendor||'')}</td>
+      <td>${statusBadge(o.status)}</td>
+      <td>
+        <button class="btn btn-gray btn-sm" onclick="openStatusModal('${esc(o.orderId)}','${esc(o.status)}')">
+          ステータス変更
+        </button>
+      </td>
+    </tr>`).join('');
+}
+
+function openStatusModal(orderId, currentStatus) {
+  document.getElementById('status-order-id').value = orderId;
+  document.getElementById('status-order-id-label').textContent = orderId;
+  document.getElementById('status-select').value = currentStatus;
+  document.getElementById('status-modal').style.display = 'flex';
+}
+
+async function updateOrderStatus() {
+  var orderId   = document.getElementById('status-order-id').value;
+  var newStatus = document.getElementById('status-select').value;
+  var btn = document.querySelector('#status-modal .btn-primary');
+  btn.disabled = true;
+  try {
+    var json = await gasGet({ action: 'updateOrderStatus', orderId: orderId, status: newStatus });
+    if (!json.success) throw new Error(json.error);
+    // ローカル状態も更新
+    allOrders = allOrders.map(function(o) {
+      return o.orderId === orderId ? Object.assign({}, o, {status: newStatus}) : o;
+    });
+    closeModal('status-modal');
+    filterOrders();
+    showToast('✅ ステータスを「' + newStatus + '」に更新しました', 'success');
+  } catch(e) {
+    showToast('❌ 更新に失敗しました: ' + e.message, 'error');
+  } finally { btn.disabled = false; }
+}
+
+function statusBadge(status) {
+  const map = {
+    '受付済':   'badge-pending',
+    '発注済':   'badge-active',
+    '払い出し済':'badge-approved',
+  };
+  return `<span class="badge ${map[status]||'badge-inactive'}">${esc(status||'—')}</span>`;
+}
+
+function filterRequests() {
+  const status = document.getElementById('req-status-filter').value;
+  const list = status ? allRequests.filter(r => r.status === status) : allRequests;
+  renderRequests(list);
+}
+
+function renderRequests(list = allRequests) {
+  const tbody = document.getElementById('req-tbody');
+  if (list.length === 0) {
+    tbody.innerHTML = `<tr><td colspan="9" style="text-align:center;color:var(--muted);padding:24px">依頼はありません</td></tr>`;
+    return;
+  }
+  const stMap = {'未処理':'badge-pending','承認済':'badge-approved','却下':'badge-rejected'};
+  tbody.innerHTML = list.map(r => `
+    <tr>
+      <td style="font-size:11px;color:var(--muted)">${esc(r.receiptId)}</td>
+      <td class="td-muted">${formatDate(r.receivedAt)}</td>
+      <td class="td-name">${esc(r.deptName)}</td>
+      <td class="td-name">${esc(r.productName)}</td>
+      <td class="td-muted">${esc(r.model||'—')}</td>
+      <td class="td-link">${r.url ? `<a href="${esc(r.url)}" target="_blank">🔗 確認</a>` : '—'}</td>
+      <td class="td-muted" style="max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(r.note||'')}</td>
+      <td><span class="badge ${stMap[r.status]||'badge-inactive'}">${esc(r.status)}</span></td>
+      <td style="display:flex;gap:4px">
+        \${r.status === '未処理'
+          ? \`<button class="btn btn-success btn-sm" onclick="openReqApproveModal('\${esc(r.receiptId)}','承認済','\${esc(r.productName)}','\${esc(r.deptName)}')">承認</button>
+             <button class="btn btn-danger btn-sm"  onclick="openReqApproveModal('\${esc(r.receiptId)}','却下','\${esc(r.productName)}','\${esc(r.deptName)}')">却下</button>\`
+          : '<span class="td-muted" style="font-size:11px">処理済</span>'}
+    </tr>`).join('');
+}
+
+
+function openReqApproveModal(receiptId, status, productName, deptName) {
+  document.getElementById('ram-receipt-id').value              = receiptId;
+  document.getElementById('ram-status').value                  = status;
+  document.getElementById('ram-product-name').textContent      = productName;
+  document.getElementById('ram-dept-name').textContent         = deptName + ' からの依頼';
+  document.getElementById('ram-comment').value                 = '';
+
+  var isApprove = (status === '承認済');
+
+  // タイトルとボタンの色
+  document.getElementById('ram-title').textContent = isApprove ? '✅ 承認する' : '❌ 却下する';
+  var btn = document.getElementById('ram-submit-btn');
+  btn.className = isApprove ? 'btn btn-success' : 'btn btn-danger';
+  btn.textContent = isApprove ? '✅ 承認する' : '❌ 却下する';
+
+  // お知らせ自動投稿欄（承認時のみ表示）
+  var noticeWrap = document.getElementById('ram-notice-wrap');
+  var noticeText = document.getElementById('ram-notice-text');
+  if (isApprove) {
+    noticeWrap.style.display = 'block';
+    // お知らせ文を自動生成
+    var deptShort = deptName.replace(/（.*?）/, '').replace('ション', 'ｼｮﾝ');
+    noticeText.value = deptShort + 'からの依頼にて「' + productName + '」を物品請求伝票に追加しました。';
+    document.getElementById('ram-auto-notice').checked = true;
+  } else {
+    noticeWrap.style.display = 'none';
+  }
+
+  document.getElementById('req-approve-modal').style.display = 'flex';
+}
+
+async function submitRequestDecision() {
+  var receiptId  = document.getElementById('ram-receipt-id').value;
+  var status     = document.getElementById('ram-status').value;
+  var comment    = document.getElementById('ram-comment').value.trim();
+  var isApprove  = (status === '承認済');
+
+  // お知らせ自動投稿
+  var autoNoticeEl  = document.getElementById('ram-auto-notice');
+  var noticeTextEl  = document.getElementById('ram-notice-text');
+  var autoNotice    = isApprove && autoNoticeEl && autoNoticeEl.checked
+                      ? (noticeTextEl ? noticeTextEl.value.trim() : '') : '';
+
+  var btn = document.getElementById('ram-submit-btn');
+  btn.disabled = true;
+  btn.textContent = '処理中...';
+
+  try {
+    var data = {
+      status:     status,
+      comment:    comment,
+      autoNotice: autoNotice || null,
+    };
+    var json = await gasGet({
+      action:    'updateProductRequestStatus',
+      receiptId: receiptId,
+      data:      JSON.stringify(data),
+    });
+    if (!json.success) throw new Error(json.error);
+
+    // ローカル状態更新
+    var req = allRequests.find(function(r) { return r.receiptId === receiptId; });
+    if (req) req.status = status;
+
+    closeModal('req-approve-modal');
+    filterRequests();
+
+    // お知らせタブも再読み込み
+    if (autoNotice) {
+      await loadNotices();
+      showToast('✅ 承認しました。部署へ通知・お知らせ投稿を行いました。', 'success');
+    } else {
+      showToast(isApprove
+        ? '✅ 承認しました。部署へ通知メールを送信しました。'
+        : '❌ 却下しました。部署へ通知メールを送信しました。',
+        isApprove ? 'success' : '');
+    }
+
+  } catch(e) {
+    showToast('❌ 処理に失敗しました: ' + e.message, 'error');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = status === '承認済' ? '✅ 承認する' : '❌ 却下する';
+  }
+}
+
+
+function exportOrderCSV() {
+  const headers = ['注文ID','注文日時','部署名','品名','型番','規格','単位','数量','金額','注文先','ステータス'];
+  const rows = filteredOrders.map(o => [
+    o.orderId, formatDate(o.orderedAt), o.deptName, o.productName,
+    o.model||'', o.spec||'', o.unit||'', o.qty, o.price||'', o.vendor||'', o.status
+  ]);
+  downloadCSV('注文履歴', headers, rows);
+}
+
+function exportInventoryCSV(type) {
+  if (type === 'warehouse') {
+    const stockItems = allProducts.filter(p => p.stockFlag === true);
+    const headers = ['商品コード','品名','型番','規格','単位','保管場所','在庫定数','実数量（記入欄）'];
+    const rows = stockItems.map(p => [p.code, p.name, p.model||'', p.spec||'', p.unit||'', p.location||'', p.stockPar||'', '']);
+    downloadCSV('倉庫棚卸しリスト', headers, rows);
+    showToast('📥 倉庫在庫リストをダウンロードしました', 'success');
+  } else {
+    const dept = document.getElementById('inv-dept-select').value;
+    if (!dept) { showToast('部署を選択してください', 'error'); return; }
+    const deptOrders = allOrders.filter(o => o.deptName === dept);
+    const uniqueCodes = [...new Set(deptOrders.map(o => o.productCode))];
+    const items = uniqueCodes.map(code => allProducts.find(p => p.code === code)).filter(Boolean);
+    const headers = ['商品コード','品名','規格','単位','実数量（記入欄）'];
+    const rows = items.map(p => [p.code, p.name, p.spec||'', p.unit||'', '']);
+    downloadCSV(`棚卸しリスト_${dept}`, headers, rows);
+    showToast(`📥 ${dept} の棚卸しリストをダウンロードしました`, 'success');
+  }
+}
+
+// ============================================================
+//  TAB2: 商品マスタ
+// ============================================================
+async function loadProducts() {
+  const tbody = document.getElementById('product-tbody');
+  try {
+    const json = await gasGet({ action: 'getProducts', includeInactive: 'true' });
+    if (!json.success) throw new Error(json.error);
+    allProducts = json.data;
+    filteredProducts = [...allProducts];
+    buildProductCatFilter();
+    renderProducts();
+  } catch(e) {
+    console.error('loadProducts error:', e);
+    tbody.innerHTML = '<tr><td colspan="11" style="text-align:center;color:#e03e3e;padding:24px">❌ 商品マスタの読み込みに失敗しました: ' + e.message + '</td></tr>';
+    document.getElementById('product-count-label').textContent = '読み込みエラー';
+  }
+}
+
+function buildProductCatFilter() {
+  const cats = [...new Set(allProducts.map(p => p.category).filter(Boolean))];
+  const sel = document.getElementById('product-cat-filter');
+  sel.innerHTML = '<option value="">全種別</option>' + cats.map(c => `<option>${esc(c)}</option>`).join('');
+}
+
+
+// ============================================================
+//  あいまい検索ヘルパー（全角半角統一・AND検索）
+// ============================================================
+function normalizeStr(str) {
+  return String(str == null ? '' : str)
+    .toLowerCase()
+    .replace(/[Ａ-Ｚａ-ｚ０-９]/g, function(c) {
+      return String.fromCharCode(c.charCodeAt(0) - 0xFEE0);
+    })
+    .replace(/　/g, ' ');
+}
+
+function matchesKeywordAdmin(p, kw) {
+  if (!kw) return true;
+  var tokens = kw.split(/\s+/).filter(function(t) { return t.length > 0; });
+  var fields = [p.code, p.category, p.name, p.model, p.spec, p.unit, p.vendor, p.location, p.note];
+  var target = fields.map(function(v) { return normalizeStr(v); }).join(' ');
+  return tokens.every(function(token) {
+    return target.indexOf(normalizeStr(token)) !== -1;
+  });
+}
+
+function filterProducts() {
+  var raw   = document.getElementById('product-search').value;
+  var kw    = normalizeStr(raw.trim());
+  var cat   = document.getElementById('product-cat-filter').value;
+  var stock = document.getElementById('product-stock-filter').value;
+
+  filteredProducts = allProducts.filter(function(p) {
+    // 在庫フラグフィルター
+    if (stock !== '') {
+      var f = String(p.stockFlag).toUpperCase();
+      if (stock === 'true'  && f !== 'TRUE'  && p.stockFlag !== true)  return false;
+      if (stock === 'false' && f !== 'FALSE' && p.stockFlag !== false) return false;
+    }
+
+    // キーワードがある場合 → カテゴリを無視して全件あいまい検索（AND・全角半角統一）
+    if (kw) {
+      return matchesKeywordAdmin(p, kw);
+    }
+
+    // キーワードがない場合 → カテゴリフィルターを適用
+    if (cat && p.category !== cat) return false;
+
+    return true;
+  });
+
+  // 件数ラベル
+  var label = filteredProducts.length + ' 件 / 全 ' + allProducts.length + ' 件';
+  if (kw && cat) label += '（全種別から検索中）';
+  document.getElementById('product-count-label').textContent = label;
+
+  renderProducts();
+}
+
+function renderProducts() {
+  const tbody = document.getElementById('product-tbody');
+  document.getElementById('product-count-label').textContent = `${filteredProducts.length} 件 / 全 ${allProducts.length} 件`;
+  if (filteredProducts.length === 0) {
+    tbody.innerHTML = `<tr><td colspan="11" style="text-align:center;color:var(--muted);padding:24px">該当商品がありません</td></tr>`;
+    return;
+  }
+  tbody.innerHTML = filteredProducts.map(p => `
+    <tr>
+      <td style="font-family:'DM Sans',sans-serif;font-size:12px;font-weight:600;color:var(--primary)">${esc(p.code)}</td>
+      <td><span style="font-size:11px;background:var(--bg);padding:2px 7px;border-radius:4px">${esc(p.category||'—')}</span></td>
+      <td>
+        <div class="td-name">${esc(p.name)}</div>
+        <div class="td-muted">${esc(p.spec||'')}</div>
+      </td>
+      <td class="td-muted">${esc(p.model||'—')}</td>
+      <td class="td-muted">${esc(p.spec||'—')}</td>
+      <td>${esc(p.unit||'—')}</td>
+      <td style="font-family:'DM Sans',sans-serif">${p.price ? '¥'+Number(p.price).toLocaleString() : '—'}</td>
+      <td class="td-muted">${esc(p.vendor||'—')}</td>
+      <td>${p.stockFlag ? '<span class="badge badge-stock">管理対象</span>' : '<span class="badge badge-inactive">対象外</span>'}</td>
+      <td>${p.active ? '<span class="badge badge-active">有効</span>' : '<span class="badge badge-inactive">廃番</span>'}</td>
+      <td style="display:flex;gap:4px">
+        <button class="btn btn-outline btn-sm" onclick="openProductModal('${esc(p.code)}')">編集</button>
+      </td>
+    </tr>`).join('');
+}
+
+function openProductModal(code) {
+  const p = code ? allProducts.find(x => x.code === code) : null;
+  document.getElementById('product-modal-title').textContent = p ? `📦 商品編集 — ${p.code}` : '📦 商品新規登録';
+  const fields = {
+    'pm-code': p?.code||'',
+    'pm-category': p?.category||'',
+    'pm-name': p?.name||'',
+    'pm-model': p?.model||'',
+    'pm-spec': p?.spec||'',
+    'pm-qtyPerBox': p?.qtyPerBox||'',
+    'pm-unit': p?.unit||'',
+    'pm-price': p?.price||'',
+    'pm-vendor': p?.vendor||'',
+    'pm-orderUnit': p?.orderUnit||1,
+    'pm-stockFlag': String(p?.stockFlag||false),
+    'pm-stockPar': p?.stockPar||'',
+    'pm-location': p?.location||'',
+    'pm-link1': p?.link1||'',
+    'pm-link2': p?.link2||'',
+    'pm-note': p?.note||'',
+    'pm-active': String(p?.active !== false),
+  };
+  Object.entries(fields).forEach(([id, val]) => {
+    const el = document.getElementById(id);
+    if (el) el.value = val;
+  });
+  document.getElementById('product-modal').style.display = 'flex';
+}
+
+async function saveProduct() {
+  const code = document.getElementById('pm-code').value;
+  const name = document.getElementById('pm-name').value.trim();
+  const cat  = document.getElementById('pm-category').value;
+  const unit = document.getElementById('pm-unit').value;
+  if (!name || !cat || !unit) { showToast('種別・品名・単位は必須です', 'error'); return; }
+
+  const btn = document.getElementById('pm-save-btn');
+  btn.disabled = true;
+
+  const product = {
+    category: cat, name, model: document.getElementById('pm-model').value,
+    spec: document.getElementById('pm-spec').value,
+    qtyPerBox: Number(document.getElementById('pm-qtyPerBox').value)||1,
+    unit, price: Number(document.getElementById('pm-price').value)||0,
+    vendor: document.getElementById('pm-vendor').value,
+    orderUnit: Number(document.getElementById('pm-orderUnit').value)||1,
+    stockFlag: document.getElementById('pm-stockFlag').value === 'true',
+    stockPar: Number(document.getElementById('pm-stockPar').value)||0,
+    location: document.getElementById('pm-location').value,
+    link1: document.getElementById('pm-link1').value,
+    link2: document.getElementById('pm-link2').value,
+    note: document.getElementById('pm-note').value,
+    active: document.getElementById('pm-active').value === 'true',
+  };
+
+  try {
+    const json = code
+      ? await gasGet({ action: 'updateProduct', code, product })
+      : await gasGet({ action: 'addProduct', product });
+    if (!json.success) throw new Error(json.error);
+    closeModal('product-modal');
+    await loadProducts();
+    showToast(code ? '✅ 商品を更新しました' : `✅ 商品を登録しました（${json.data.code}）`, 'success');
+  } catch(e) {
+    showToast('❌ 保存に失敗しました: ' + e.message, 'error');
+  } finally { btn.disabled = false; }
+}
+
+
+
+function importProductCSV(e) {
+  var file = e.target.files[0];
+  if (!file) return;
+  var reader = new FileReader();
+  reader.onload = function(evt) {
+    var raw = evt.target.result;
+    if (raw.charCodeAt(0) === 0xFEFF) raw = raw.slice(1);
+    var lines = raw.split("\r").join("").split("\n");
+    var startIdx = 0;
+    if (lines[0] && (lines[0].indexOf("商品コード") >= 0 || lines[0].indexOf("品名") >= 0)) {
+      startIdx = 1;
+    }
+    var products = [];
+    for (var i = startIdx; i < lines.length; i++) {
+      var line = lines[i].trim();
+      if (!line) continue;
+      var cols = parseCSVLine(line);
+      if (!cols[2] && !cols[1]) continue;
+      products.push({
+        code:      cols[0]  || "",
+        category:  cols[1]  || "",
+        name:      cols[2]  || "",
+        model:     cols[3]  || "",
+        spec:      cols[4]  || "",
+        qtyPerBox: Number(cols[5])  || 1,
+        unit:      cols[6]  || "個",
+        price:     Number(cols[7])  || 0,
+        vendor:    cols[8]  || "",
+        orderUnit: Number(cols[9])  || 1,
+        stockFlag: (cols[10] === "TRUE" || cols[10] === "true"),
+        stockPar:  Number(cols[11]) || 0,
+        location:  cols[12] || "",
+        link1:     cols[13] || "",
+        link2:     cols[14] || "",
+        note:      cols[15] || "",
+        active:    (cols[16] !== "FALSE" && cols[16] !== "false"),
+      });
+    }
+    if (products.length === 0) {
+      showToast("⚠️ 商品データが見つかりません。CSVの形式を確認してください", "error");
+      e.target.value = ""; return;
+    }
+    var msg = "CSVから " + products.length + " 件の商品を取り込みます。よろしいですか？";
+    if (!confirm(msg)) { e.target.value = ""; return; }
+    // 1件ずつ送信（URLが長くなりすぎないようにするため）
+    var CHUNK = 1;
+    var totalCount = 0;
+    showToast("⏳ " + products.length + " 件を取り込み中...");
+    (async function() {
+      for (var k = 0; k < products.length; k++) {
+        try {
+          var p = products[k];
+          var action = p.code ? "updateProduct" : "addProduct";
+          var params = { action: action, product: JSON.stringify(p) };
+          if (p.code) params.code = p.code;
+          var json = await gasGet(params);
+          if (!json.success && action === "updateProduct") {
+            // 存在しないコードは新規登録にフォールバック
+            json = await gasGet({ action: "addProduct", product: JSON.stringify(p) });
+          }
+          if (json.success) totalCount++;
+        } catch (err) {
+          console.error("item " + k + " error:", err);
+        }
+      }
+      await loadProducts();
+      showToast("✅ " + totalCount + " 件取り込み完了", "success");
+      e.target.value = "";
+    })();
+  };
+  reader.readAsText(file, "UTF-8");
+}
+
+function exportProductCSV() {
+  const headers = ['商品コード','種別コード','品名','型番','規格','入数','単位','金額','注文先','発注単位','在庫管理フラグ','在庫定数','保管場所','商品リンク①','商品リンク②','備考','有効フラグ'];
+  const rows = allProducts.map(p => [
+    p.code,p.category,p.name,p.model,p.spec,p.qtyPerBox,p.unit,p.price,
+    p.vendor,p.orderUnit,p.stockFlag,p.stockPar,p.location,p.link1,p.link2,p.note,p.active
+  ]);
+  downloadCSV('商品マスタ', headers, rows);
+  showToast('📥 商品マスタCSVをダウンロードしました', 'success');
+}
+
+
+
+
+async function deleteDept() {
+  var id   = document.getElementById('dm-id').value;
+  var name = document.getElementById('dm-name').value;
+  if (!id) return;
+  if (!confirm('「' + name + '」を無効化しますか？\nログインできなくなりますが、注文履歴は保持されます。')) return;
+  try {
+    var json = await gasGet({ action: 'deleteDepartment', id: id });
+    if (!json.success) throw new Error(json.error);
+    closeModal('dept-modal');
+    await loadDepts();
+    showToast('✅ 部署「' + name + '」を無効化しました');
+  } catch(e) {
+    showToast('❌ 削除に失敗しました: ' + e.message, 'error');
+  }
+}
+
+// ============================================================
+//  TAB3: 部署管理
+// ============================================================
+async function loadDepts() {
+  var tbody = document.getElementById('dept-tbody');
+  try {
+    var json = await gasGet({ action: 'getDepartmentsForAdmin' });
+    if (!json.success) throw new Error(json.error);
+    allDepts = json.data;
+    renderDepts();
+  } catch(e) {
+    console.error('loadDepts:', e);
+    tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:var(--danger);padding:24px">❌ ' + e.message + '</td></tr>';
+  }
+}
+
+function renderDepts() {
+  var tbody = document.getElementById('dept-tbody');
+  if (!allDepts || allDepts.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:var(--muted);padding:24px">部署データがありません</td></tr>';
+    return;
+  }
+  tbody.innerHTML = allDepts.map(function(d) {
+    var activeBadge = d.active
+      ? '<span class="badge badge-active">有効</span>'
+      : '<span class="badge badge-inactive">無効</span>';
+    return '<tr>'
+      + '<td style="font-family:DM Sans,sans-serif;font-size:12px;color:var(--muted)">' + esc(d.id) + '</td>'
+      + '<td class="td-name">' + esc(d.name) + '</td>'
+      + '<td><code style="font-size:12px;background:var(--bg);padding:2px 6px;border-radius:4px">' + esc(d.username) + '</code></td>'
+      + '<td class="td-muted">' + esc(d.email || '—') + '</td>'
+      + '<td>' + activeBadge + '</td>'
+      + '<td><button class="btn btn-outline btn-sm" onclick="openDeptModal(&apos;' + esc(d.id) + '&apos;)">編集</button></td>'
+      + '</tr>';
+  }).join('');
+}
+
+function openDeptModal(id) {
+  var d = id ? (allDepts || []).find(function(x) { return x.id === id; }) : null;
+  document.getElementById('dm-modal-title').textContent = d ? '🏥 部署編集 — ' + d.name : '🏥 部署を追加';
+  document.getElementById('dm-id').value       = d ? d.id       : '';
+  document.getElementById('dm-name').value     = d ? d.name     : '';
+  document.getElementById('dm-username').value = d ? d.username : '';
+  document.getElementById('dm-password').value = '';
+  document.getElementById('dm-email').value    = d ? (d.email || '') : '';
+  document.getElementById('dm-active').value   = d ? String(d.active !== false) : 'true';
+  var delBtn = document.getElementById('dm-delete-btn');
+  if (delBtn) delBtn.style.display = d ? 'inline-flex' : 'none';
+  document.getElementById('dept-modal').style.display = 'flex';
+}
+
+async function saveDept() {
+  var id       = document.getElementById('dm-id').value;
+  var name     = document.getElementById('dm-name').value.trim();
+  var username = document.getElementById('dm-username').value.trim();
+  var password = document.getElementById('dm-password').value;
+  var email    = document.getElementById('dm-email').value.trim();
+  var active   = document.getElementById('dm-active').value === 'true';
+
+  if (!name || !username) { showToast('部署名とログインIDは必須です', 'error'); return; }
+  if (!id && !password)   { showToast('新規登録時はパスワードを入力してください', 'error'); return; }
+
+  var btn = document.getElementById('dm-save-btn');
+  btn.disabled = true;
+
+  var dept = { name: name, username: username, password: password, email: email, active: active };
+
+  try {
+    var json = id
+      ? await gasGet({ action: 'updateDepartment', id: id, dept: JSON.stringify(dept) })
+      : await gasGet({ action: 'addDepartment',              dept: JSON.stringify(dept) });
+    if (!json.success) throw new Error(json.error);
+    closeModal('dept-modal');
+    await loadDepts();
+    showToast(id ? '✅ 部署を更新しました' : '✅ 部署「' + name + '」を追加しました（ID: ' + json.data.id + '）', 'success');
+  } catch(e) {
+    showToast('❌ 保存に失敗しました: ' + e.message, 'error');
+  } finally { btn.disabled = false; }
+}
+
+// ============================================================
+//  TAB4: お知らせ
+// ============================================================
+async function loadNotices() {
+  var tbody = document.getElementById("notice-tbody");
+  try {
+    var json = await gasGet({ action: "getAllNotices" });
+    if (!json.success) throw new Error(json.error);
+    allNoticesData = json.data;
+    renderNotices();
+  } catch(e) {
+    tbody.innerHTML = "<tr><td colspan=\"6\" style=\"text-align:center;color:var(--danger);padding:24px\">❌ 読み込み失敗: " + e.message + "</td></tr>";
+  }
+}
+
+function openNoticeModal(id) {
+  var n = id ? (allNoticesData || []).find(function(x) { return x.id === id; }) : null;
+  document.getElementById('nm-modal-title').textContent = n ? '📢 お知らせ編集' : '📢 お知らせ投稿';
+  document.getElementById('nm-id').value       = n ? n.id         : '';
+  document.getElementById('nm-title').value    = n ? n.title      : '';
+  document.getElementById('nm-body').value     = n ? (n.body      || '') : '';
+  document.getElementById('nm-priority').value = n ? (n.priority  || 'normal') : 'normal';
+  document.getElementById('nm-active').value   = n ? String(n.active !== false) : 'true';
+  document.getElementById('nm-link-url').value   = n ? (n.linkUrl   || '') : '';
+  document.getElementById('nm-link-label').value = n ? (n.linkLabel || '') : '';
+  var today = new Date().toISOString().slice(0, 10);
+  document.getElementById('nm-date').value = n && n.date ? formatDateISO(n.date) : today;
+  var delBtn = document.getElementById('nm-delete-btn');
+  if (delBtn) delBtn.style.display = n ? 'inline-flex' : 'none';
+  document.getElementById('notice-modal').style.display = 'flex';
+}
+
+async function saveNotice() {
+  var id    = document.getElementById('nm-id').value;
+  var title = document.getElementById('nm-title').value.trim();
+  var date  = document.getElementById('nm-date').value;
+  if (!title || !date) { showToast('タイトルと掲載日は必須です', 'error'); return; }
+
+  var notice = {
+    title:     title,
+    date:      date,
+    body:      document.getElementById('nm-body').value.trim(),
+    priority:  document.getElementById('nm-priority').value,
+    active:    document.getElementById('nm-active').value === 'true',
+    linkUrl:   document.getElementById('nm-link-url').value.trim(),
+    linkLabel: document.getElementById('nm-link-label').value.trim(),
+  };
+
+  var btn = document.querySelector('#notice-modal .btn-primary');
+  btn.disabled = true;
+  try {
+    var params = id
+      ? { action: 'updateNotice', id: id, notice: JSON.stringify(notice) }
+      : { action: 'addNotice',             notice: JSON.stringify(notice) };
+    var json = await gasGet(params);
+    if (!json.success) throw new Error(json.error);
+    closeModal('notice-modal');
+    await loadNotices();
+    showToast(id ? '✅ お知らせを更新しました' : '✅ お知らせを投稿しました', 'success');
+  } catch(e) {
+    showToast('❌ 保存に失敗しました: ' + e.message, 'error');
+  } finally { btn.disabled = false; }
+}
+
+// ============================================================
+//  TAB5: 業者リスト
+// ============================================================
+async function loadVendors() {
+  var tbody = document.getElementById('vendor-tbody');
+  try {
+    var json = await gasGet({ action: 'getVendors' });
+    if (!json.success) throw new Error(json.error);
+    allVendors = json.data;
+    renderVendors();
+  } catch(e) {
+    console.error('loadVendors:', e);
+    tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:var(--danger);padding:24px">❌ ' + e.message + '</td></tr>';
+  }
+}
+
+function renderVendors() {
+  var tbody = document.getElementById('vendor-tbody');
+  if (!allVendors || allVendors.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;color:var(--muted);padding:24px">業者データがありません</td></tr>';
+    return;
+  }
+  tbody.innerHTML = allVendors.map(function(v) {
+    var urlCell = v.url
+      ? '<a href="' + esc(v.url) + '" target="_blank" style="font-size:11px;color:var(--primary);background:var(--primary-lt);padding:2px 8px;border-radius:4px;text-decoration:none;">🔗 開く</a>'
+      : '<span class="td-muted">—</span>';
+    return '<tr>'
+      + '<td style="font-size:12px;color:var(--muted)">' + esc(v.id) + '</td>'
+      + '<td class="td-name">' + esc(v.name) + '</td>'
+      + '<td class="td-muted">' + esc(v.contact || '—') + '</td>'
+      + '<td class="td-muted">' + esc(v.tel     || '—') + '</td>'
+      + '<td class="td-muted">' + esc(v.email   || '—') + '</td>'
+      + '<td>' + urlCell + '</td>'
+      + '<td class="td-muted">' + esc(v.note    || '—') + '</td>'
+      + '<td><button class="btn btn-outline btn-sm" onclick="openVendorModal(&apos;' + esc(v.id) + '&apos;)">編集</button></td>'
+      + '</tr>';
+  }).join('');
+}
+
+function openVendorModal(id) {
+  var v = id ? (allVendors || []).find(function(x) { return x.id === id; }) : null;
+  document.getElementById('vm-modal-title').textContent = v ? '🏢 業者編集 — ' + v.name : '🏢 業者を追加';
+  document.getElementById('vm-id').value         = v ? v.id            : '';
+  document.getElementById('vm-name').value       = v ? v.name          : '';
+  document.getElementById('vm-contact').value    = v ? (v.contact   || '') : '';
+  document.getElementById('vm-tel').value        = v ? (v.tel        || '') : '';
+  document.getElementById('vm-email').value      = v ? (v.email      || '') : '';
+  document.getElementById('vm-url').value        = v ? (v.url        || '') : '';
+  document.getElementById('vm-login-id').value   = v ? (v.loginId    || '') : '';
+  document.getElementById('vm-login-pass').value = v ? (v.loginPass  || '') : '';
+  document.getElementById('vm-note').value       = v ? (v.note       || '') : '';
+
+  // URLプレビューリンク
+  var urlLink = document.getElementById('vm-url-link');
+  if (v && v.url) {
+    urlLink.href = v.url;
+    urlLink.style.display = 'inline-block';
+  } else {
+    urlLink.style.display = 'none';
+  }
+
+  var delBtn = document.getElementById('vm-delete-btn');
+  if (delBtn) delBtn.style.display = v ? 'inline-flex' : 'none';
+  document.getElementById('vendor-modal').style.display = 'flex';
+}
+
+
+async function deleteVendor() {
+  var id   = document.getElementById('vm-id').value;
+  var name = document.getElementById('vm-name').value;
+  if (!id) return;
+  if (!confirm('「' + name + '」を削除しますか？\nこの操作は取り消せません。')) return;
+  try {
+    var json = await gasGet({ action: 'deleteVendor', id: id });
+    if (!json.success) throw new Error(json.error);
+    closeModal('vendor-modal');
+    await loadVendors();
+    showToast('✅ 業者「' + name + '」を削除しました');
+  } catch(e) {
+    showToast('❌ 削除に失敗しました: ' + e.message, 'error');
+  }
+}
+
+
+function toggleVmPass() {
+  var inp = document.getElementById('vm-login-pass');
+  var btn = inp.previousElementSibling ? inp.previousElementSibling.querySelector('button') : null;
+  if (inp.type === 'password') {
+    inp.type = 'text';
+  } else {
+    inp.type = 'password';
+  }
+}
+async function saveVendor() {
+  var id   = document.getElementById('vm-id').value;
+  var name = document.getElementById('vm-name').value.trim();
+  if (!name) { showToast('業者名は必須です', 'error'); return; }
+
+  var vendor = {
+    name:      name,
+    contact:   document.getElementById('vm-contact').value.trim(),
+    tel:       document.getElementById('vm-tel').value.trim(),
+    email:     document.getElementById('vm-email').value.trim(),
+    note:      document.getElementById('vm-note').value.trim(),
+    url:       document.getElementById('vm-url').value.trim(),
+    loginId:   document.getElementById('vm-login-id').value.trim(),
+    loginPass: document.getElementById('vm-login-pass').value.trim(),
+  };
+
+  var btn = document.querySelector('#vendor-modal .btn-primary');
+  btn.disabled = true;
+  try {
+    var json = id
+      ? await gasGet({ action: 'updateVendor', id: id, vendor: JSON.stringify(vendor) })
+      : await gasGet({ action: 'addVendor',             vendor: JSON.stringify(vendor) });
+    if (!json.success) throw new Error(json.error);
+    closeModal('vendor-modal');
+    await loadVendors();
+    showToast(id ? '✅ 業者情報を更新しました' : '✅ 業者「' + name + '」を追加しました', 'success');
+  } catch(e) {
+    showToast('❌ 保存に失敗しました: ' + e.message, 'error');
+  } finally { btn.disabled = false; }
+}
+
+// ============================================================
+//  共通ユーティリティ
+// ============================================================
+
+function closeModal(id) { document.getElementById(id).style.display = 'none'; }
+
+function showToast(msg, type='') {
+  const wrap = document.getElementById('toast-wrap');
+  const el   = document.createElement('div');
+  el.className = `toast ${type}`;
+  el.textContent = msg;
+  wrap.appendChild(el);
+  setTimeout(() => el.remove(), 4000);
+}
+
+function formatDate(val) {
+  if (!val) return '—';
+  const d = new Date(val);
+  if (isNaN(d)) return String(val).slice(0,10);
+  return `${d.getFullYear()}/${String(d.getMonth()+1).padStart(2,'0')}/${String(d.getDate()).padStart(2,'0')} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
+}
+
+function setTodayDate() {
+  const today = new Date().toISOString().split('T')[0];
+  const el = document.getElementById('order-date-filter');
+  if (el) el.max = today;
+}
+
+
+// 業者URLプレビュー
+document.addEventListener('DOMContentLoaded', function() {
+  var vmUrl = document.getElementById('vm-url');
+  if (vmUrl) {
+    vmUrl.addEventListener('input', function() {
+      var link = document.getElementById('vm-url-link');
+      var val  = this.value.trim();
+      if (val && (val.startsWith('http://') || val.startsWith('https://'))) {
+        link.href = val;
+        link.style.display = 'inline-block';
+      } else {
+        link.style.display = 'none';
+      }
+    });
+  }
+});
+// vm-url-preview-handler
+function esc(str) {
+  return String(str??'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+function downloadCSV(filename, headers, rows) {
+  var bom = "﻿";
+  var crlf = String.fromCharCode(13) + String.fromCharCode(10);
+  var csvRows = [headers].concat(rows).map(function(r) {
+    return r.map(function(c) {
+      var v = (c == null) ? "" : String(c);
+      var q = '"';
+      return q + v.split(q).join(q + q) + q;
+    }).join(",");
+  });
+  var csv = bom + csvRows.join(crlf);
+  var blob = new Blob([csv], {type: "text/csv;charset=utf-8"});
+  var url = URL.createObjectURL(blob);
+  var a = document.createElement("a");
+  a.href = url;
+  a.download = filename + "_" + new Date().toISOString().slice(0, 10) + ".csv";
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+function parseCSVLine(line) {
+  const result = []; let cur = ''; let inQ = false;
+  for (let i = 0; i < line.length; i++) {
+    if (line[i] === '"') {
+      if (inQ && line[i+1] === '"') { cur += '"'; i++; }
+      else inQ = !inQ;
+    } else if (line[i] === ',' && !inQ) {
+      result.push(cur); cur = '';
+    } else cur += line[i];
+  }
+  result.push(cur);
+  return result;
+}
+
+// ============================================================
+//  お知らせ：renderNotices・deleteNotice
+// ============================================================
+
+var allNoticesData = [];
+var allCalData = [];
+var calAdminYear  = new Date().getFullYear();
+var calAdminMonth = new Date().getMonth() + 1;
+
+function renderNotices() {
+  var tbody = document.getElementById('notice-tbody');
+  if (!allNoticesData || allNoticesData.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:var(--muted);padding:24px">お知らせはありません</td></tr>';
+    return;
+  }
+  tbody.innerHTML = allNoticesData.map(function(n) {
+    var dateStr = formatDateOnly(n.date);
+    var priBadge = n.priority === 'high'
+      ? '<span class="badge badge-rejected">\uD83D\uDD34 重要</span>'
+      : '<span class="badge badge-inactive">通常</span>';
+    var activeBadge = n.active
+      ? '<span class="badge badge-active">表示中</span>'
+      : '<span class="badge badge-inactive">非表示</span>';
+    var bodyPreview = n.body ? esc(n.body.slice(0, 30)) + (n.body.length > 30 ? '…' : '') : '—';
+    var linkIcon = n.linkUrl ? ' <span style="font-size:10px;background:var(--primary-lt);color:var(--primary);padding:1px 5px;border-radius:3px">🔗</span>' : '';
+    return '<tr>'
+      + '<td class="td-muted">' + dateStr + '</td>'
+      + '<td class="td-name">' + esc(n.title) + linkIcon + '</td>'
+      + '<td class="td-muted" style="max-width:180px">' + bodyPreview + '</td>'
+      + '<td>' + priBadge + '</td>'
+      + '<td>' + activeBadge + '</td>'
+      + '<td><button class="btn btn-outline btn-sm" onclick="openNoticeModal(&apos;' + esc(n.id) + '&apos;)">編集</button></td>'
+      + '</tr>';
+  }).join('');
+}
+
+async function deleteNotice() {
+  var id = document.getElementById('nm-id').value;
+  if (!id) return;
+  if (!confirm('このお知らせを削除しますか？')) return;
+  try {
+    var json = await gasGet({ action: 'deleteNotice', id: id });
+    if (!json.success) throw new Error(json.error);
+    closeModal('notice-modal');
+    await loadNotices();
+    showToast('🗑 お知らせを削除しました');
+  } catch(e) {
+    showToast('❌ 削除に失敗しました: ' + e.message, 'error');
+  }
+}
+
+// ============================================================
+//  カレンダー：読み込み・描画・CRUD
+// ============================================================
+
+async function loadCalendarEvents() {
+  try {
+    var json = await gasGet({ action: 'getAllCalendarEvents' });
+    if (!json.success) throw new Error(json.error);
+    allCalData = json.data;
+    renderCalAdmin();
+    renderCalTable();
+  } catch(e) {
+    console.error('loadCalendarEvents error:', e);
+    var tbody = document.getElementById('cal-tbody');
+    if (tbody) tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;color:var(--danger);padding:24px">❌ 読み込み失敗: ' + e.message + '</td></tr>';
+  }
+}
+
+function calAdminPrev() { calAdminMonth--; if (calAdminMonth < 1) { calAdminMonth = 12; calAdminYear--; } renderCalAdmin(); }
+function calAdminNext() { calAdminMonth++; if (calAdminMonth > 12) { calAdminMonth = 1; calAdminYear++; } renderCalAdmin(); }
+
+function renderCalAdmin() {
+  var titleEl = document.getElementById('cal-admin-title');
+  if (titleEl) titleEl.textContent = calAdminYear + '年 ' + calAdminMonth + '月';
+
+  var daysEl = document.getElementById('cal-admin-days');
+  if (!daysEl) return;
+
+  var today = new Date();
+  var firstDay     = new Date(calAdminYear, calAdminMonth - 1, 1).getDay();
+  var lastDate     = new Date(calAdminYear, calAdminMonth, 0).getDate();
+  var prevLastDate = new Date(calAdminYear, calAdminMonth - 1, 0).getDate();
+
+  var ICONS = { deadline: '⚠️', delivery: '📦', other: '📅' };
+
+  var eventMap = {};
+  (allCalData || []).forEach(function(ev) {
+    var d = new Date(ev.date);
+    var key = d.getFullYear() + '-' + (d.getMonth()+1) + '-' + d.getDate();
+    if (!eventMap[key]) eventMap[key] = [];
+    eventMap[key].push(ev);
+  });
+
+  var html = '';
+
+  for (var i = firstDay - 1; i >= 0; i--) {
+    html += '<div class="adm-cal-day other-m">' + (prevLastDate - i) + '</div>';
+  }
+
+  for (var d = 1; d <= lastDate; d++) {
+    var isToday = (calAdminYear === today.getFullYear() && calAdminMonth === today.getMonth() + 1 && d === today.getDate());
+    var key  = calAdminYear + '-' + calAdminMonth + '-' + d;
+    var evs  = eventMap[key];
+    var cls  = 'adm-cal-day' + (isToday ? ' is-today' : '') + (evs ? ' has-ev' : '');
+
+    var iconsHtml   = '';
+    var tooltipHtml = '';
+    if (evs) {
+      var iconSpans = evs.map(function(ev) {
+        return '<span style="font-size:9px">' + (ICONS[ev.type] || ICONS.other) + '</span>';
+      }).join('');
+      iconsHtml = '<span class="adm-cal-icons">' + iconSpans + '</span>';
+
+      var lines = evs.map(function(ev) {
+        var line = (ICONS[ev.type] || ICONS.other) + ' ' + ev.title;
+        if (ev.note) line += '\n    ' + ev.note;
+        return line;
+      }).join('\n');
+      tooltipHtml = '<span class="adm-cal-tip">' + esc(lines) + '</span>';
+    }
+    html += '<div class="' + cls + '">' + d + iconsHtml + tooltipHtml + '</div>';
+  }
+
+  var total = firstDay + lastDate;
+  var next  = total % 7 === 0 ? 0 : 7 - (total % 7);
+  for (var n = 1; n <= next; n++) {
+    html += '<div class="adm-cal-day other-m">' + n + '</div>';
+  }
+  daysEl.innerHTML = html;
+
+  var evEl = document.getElementById('cal-admin-events');
+  if (evEl) evEl.style.display = 'none';
+}
+
+function renderCalTable() {
+  var tbody = document.getElementById('cal-tbody');
+  if (!tbody) return;
+  if (!allCalData || allCalData.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;color:var(--muted);padding:24px">予定がありません</td></tr>';
+    return;
+  }
+  var typeLabel = { deadline: '⚠️ 発注締め切り', delivery: '📦 払い出し日', other: '📅 その他' };
+  tbody.innerHTML = allCalData.map(function(ev) {
+    return '<tr>'
+      + '<td style="font-weight:600;font-family:\'DM Sans\',sans-serif">' + formatDateOnly(ev.date) + '</td>'
+      + '<td class="td-name">' + esc(ev.title) + '</td>'
+      + '<td>' + (typeLabel[ev.type] || esc(ev.type)) + '</td>'
+      + '<td class="td-muted">' + esc(ev.note || '—') + '</td>'
+      + '<td><button class="btn btn-outline btn-sm" onclick="openCalModal(\'' + esc(ev.id) + '\')">編集</button></td>'
+      + '</tr>';
+  }).join('');
+}
+
+function openCalModal(id) {
+  var ev = id ? (allCalData || []).find(function(x) { return x.id === id; }) : null;
+  document.getElementById('cal-modal-title').textContent = ev ? '📅 予定の編集' : '📅 予定の追加';
+  document.getElementById('cm-id').value    = ev ? ev.id    : '';
+  document.getElementById('cm-title').value = ev ? ev.title : '';
+  document.getElementById('cm-type').value  = ev ? ev.type  : 'deadline';
+  document.getElementById('cm-note').value  = ev ? (ev.note || '') : '';
+  var today = new Date().toISOString().slice(0, 10);
+  document.getElementById('cm-date').value  = ev && ev.date ? formatDateISO(ev.date) : today;
+  var delBtn = document.getElementById('cm-delete-btn');
+  if (delBtn) delBtn.style.display = ev ? 'inline-flex' : 'none';
+  document.getElementById('cal-modal').style.display = 'flex';
+}
+
+async function saveCalEvent() {
+  var id    = document.getElementById('cm-id').value;
+  var title = document.getElementById('cm-title').value.trim();
+  var date  = document.getElementById('cm-date').value;
+  if (!title || !date) { showToast('タイトルと日付は必須です', 'error'); return; }
+  var ev = {
+    title: title,
+    date:  date,
+    type:  document.getElementById('cm-type').value,
+    note:  document.getElementById('cm-note').value,
+  };
+  var btn = document.querySelector('#cal-modal .btn-primary');
+  btn.disabled = true;
+  try {
+    var params = id
+      ? { action: 'updateCalendarEvent', id: id, event: JSON.stringify(ev) }
+      : { action: 'addCalendarEvent', event: JSON.stringify(ev) };
+    var json = await gasGet(params);
+    if (!json.success) throw new Error(json.error);
+    closeModal('cal-modal');
+    await loadCalendarEvents();
+    showToast(id ? '✅ 予定を更新しました' : '✅ 予定を追加しました', 'success');
+  } catch(e) {
+    showToast('❌ 保存に失敗しました: ' + e.message, 'error');
+  } finally { btn.disabled = false; }
+}
+
+async function deleteCalEvent() {
+  var id = document.getElementById('cm-id').value;
+  if (!id) return;
+  if (!confirm('この予定を削除しますか？')) return;
+  try {
+    var json = await gasGet({ action: 'deleteCalendarEvent', id: id });
+    if (!json.success) throw new Error(json.error);
+    closeModal('cal-modal');
+    await loadCalendarEvents();
+    showToast('🗑 予定を削除しました');
+  } catch(e) {
+    showToast('❌ 削除に失敗しました: ' + e.message, 'error');
+  }
+}
+
+// ============================================================
+//  日付ユーティリティ
+// ============================================================
+
+function formatDateOnly(val) {
+  if (!val) return '—';
+  var d = new Date(val);
+  if (isNaN(d)) return String(val).slice(0, 10);
+  return d.getFullYear() + '/' + String(d.getMonth()+1).padStart(2,'0') + '/' + String(d.getDate()).padStart(2,'0');
+}
+
+function formatDateISO(val) {
+  if (!val) return '';
+  var d = new Date(val);
+  if (isNaN(d)) return String(val).slice(0, 10);
+  return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0');
+}
+
+</script>
+
+<!-- 商品登録依頼 承認・却下モーダル -->
+<div class="modal-overlay" id="req-approve-modal" style="display:none" onclick="if(event.target===this)closeModal('req-approve-modal')">
+  <div class="modal" style="max-width:520px">
+    <div class="modal-title" id="ram-title">📝 商品登録依頼の審査</div>
+    <input type="hidden" id="ram-receipt-id">
+    <input type="hidden" id="ram-status">
+
+    <!-- 依頼内容の表示 -->
+    <div style="background:var(--bg);border-radius:8px;padding:12px 16px;margin-bottom:16px">
+      <div style="font-size:11px;color:var(--muted);margin-bottom:4px">依頼内容</div>
+      <div style="font-size:15px;font-weight:700" id="ram-product-name"></div>
+      <div style="font-size:12px;color:var(--muted);margin-top:2px" id="ram-dept-name"></div>
+    </div>
+
+    <div class="form-grid" style="grid-template-columns:1fr">
+      <!-- 審査コメント -->
+      <div class="form-group">
+        <label class="flabel">審査コメント
+          <span style="font-size:10px;font-weight:400;color:var(--muted);margin-left:4px">依頼元部署へのメールに含まれます</span>
+        </label>
+        <textarea class="form-control" id="ram-comment" rows="3"
+          placeholder="承認・却下の理由や補足事項を入力してください（省略可）"></textarea>
+      </div>
+
+      <!-- お知らせ自動投稿（承認時のみ表示） -->
+      <div class="form-group" id="ram-notice-wrap" style="display:none">
+        <label class="flabel" style="display:flex;align-items:center;gap:8px">
+          <input type="checkbox" id="ram-auto-notice" checked>
+          ポータルのお知らせに自動投稿する
+        </label>
+        <input class="form-control" id="ram-notice-text" style="margin-top:8px"
+          placeholder="例：4R病棟からの依頼にて布ガムテープを物品請求伝票に追加しました。">
+        <div style="font-size:11px;color:var(--muted);margin-top:4px">
+          ※ チェックを外すとお知らせは投稿されません
+        </div>
+      </div>
+    </div>
+
+    <div class="modal-footer">
+      <button class="btn-cancel-modal" onclick="closeModal('req-approve-modal')">キャンセル</button>
+      <button class="btn btn-primary" id="ram-submit-btn" onclick="submitRequestDecision()">決定</button>
+    </div>
+  </div>
+</div>
+</body>
+</html>
