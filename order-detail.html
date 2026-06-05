@@ -1,0 +1,399 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>注文処理ページ</title>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#f0f4f8;--surface:#fff;--primary:#1a6e3c;--primary-light:#e8f5ed;
+  --accent:#e05c2a;--text:#1a2533;--text-sub:#5a6a7a;--border:#d4dce6;
+  --shadow:0 2px 12px rgba(0,0,0,.08);--radius:10px;--font:'Noto Sans JP',sans-serif;
+}
+body{font-family:var(--font);background:var(--bg);color:var(--text);min-height:100vh}
+
+/* ── トップバー（印刷時非表示） ─ */
+.top-bar{background:var(--primary);color:#fff;padding:0 20px;display:flex;align-items:center;gap:12px;height:52px;position:sticky;top:0;z-index:100;box-shadow:0 2px 8px rgba(0,0,0,.15)}
+.top-bar a{color:#fff;text-decoration:none;opacity:.8;font-size:13px}.top-bar a:hover{opacity:1}
+.top-bar h1{font-size:15px;font-weight:700;flex:1}
+.btn{padding:8px 16px;border:none;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;font-family:var(--font);transition:background .2s}
+.btn-primary{background:var(--primary);color:#fff}.btn-primary:hover{background:#15592f}
+.btn-secondary{background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.3);color:#fff}.btn-secondary:hover{background:rgba(255,255,255,.25)}
+.btn-warning{background:#e67e22;color:#fff}.btn-warning:hover{background:#ca6f1e}
+.btn-done{background:#5a6a7a;color:#fff}.btn-done:hover{background:#44535f}
+.btn-print{background:#fff;color:var(--primary);border:2px solid var(--primary)}.btn-print:hover{background:var(--primary-light)}
+.btn-sm{padding:5px 12px;font-size:12px}
+.btn-outline{background:none;border:1.5px solid var(--primary);color:var(--primary)}.btn-outline:hover{background:var(--primary-light)}
+
+/* ── メインレイアウト ─ */
+.page-body{max-width:1000px;margin:0 auto;padding:24px 20px}
+
+/* ── 注文リスト（左ペイン） ─ */
+.two-col{display:grid;grid-template-columns:280px 1fr;gap:20px;align-items:start}
+@media(max-width:800px){.two-col{grid-template-columns:1fr}}
+
+.order-list-panel{background:var(--surface);border-radius:var(--radius);box-shadow:var(--shadow);border:1.5px solid var(--border);overflow:hidden;position:sticky;top:72px}
+.order-list-header{padding:14px 16px;border-bottom:2px solid var(--border);font-size:14px;font-weight:700;display:flex;align-items:center;justify-content:space-between}
+.order-list-search{padding:10px 12px;border-bottom:1px solid var(--border)}
+.order-list-search input{width:100%;padding:7px 10px;border:1.5px solid var(--border);border-radius:6px;font-size:13px;font-family:var(--font)}
+.order-list-search input:focus{outline:none;border-color:var(--primary)}
+.order-list-items{max-height:calc(100vh - 220px);overflow-y:auto}
+.order-list-item{
+  padding:12px 16px;border-bottom:1px solid var(--border);cursor:pointer;
+  transition:background .1s;position:relative;
+}
+.order-list-item:hover{background:var(--primary-light)}
+.order-list-item.active{background:var(--primary-light);border-left:3px solid var(--primary)}
+.oli-id{font-size:11px;font-family:monospace;color:var(--text-sub)}
+.oli-dept{font-size:13px;font-weight:700;margin:2px 0}
+.oli-date{font-size:11px;color:var(--text-sub)}
+.oli-badge{position:absolute;top:12px;right:12px}
+
+/* ── 帳票エリア ─ */
+.detail-panel{background:var(--surface);border-radius:var(--radius);box-shadow:var(--shadow);border:1.5px solid var(--border);padding:28px}
+.no-order{text-align:center;color:var(--text-sub);padding:60px 20px;font-size:14px}
+
+/* ── 帳票ヘッダー ─ */
+.slip-header{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:24px;padding-bottom:20px;border-bottom:2px solid var(--border)}
+.slip-title-area h2{font-size:22px;font-weight:700;letter-spacing:.5px}
+.slip-title-area .slip-id{font-size:13px;font-family:monospace;color:var(--text-sub);margin-top:4px}
+.slip-meta{text-align:right;font-size:13px;color:var(--text-sub);line-height:1.7}
+.slip-meta strong{color:var(--text);font-size:15px}
+
+/* ステータスバッジ（帳票内） */
+.status-badge{display:inline-block;padding:5px 14px;border-radius:20px;font-size:13px;font-weight:700}
+.s-new    {background:#e8f5ed;color:#1a6e3c}
+.s-ordered{background:#fff8e1;color:#b8860b}
+.s-done   {background:#e8edf2;color:#5a6a7a}
+
+/* ── アクションバー ─ */
+.action-bar{
+  display:flex;flex-wrap:wrap;gap:10px;margin-bottom:20px;
+  padding:14px 16px;background:#f8fafc;border-radius:8px;border:1.5px solid var(--border);
+  align-items:center;
+}
+.action-bar-label{font-size:12px;font-weight:600;color:var(--text-sub);margin-right:4px}
+.action-bar .sep{width:1px;height:24px;background:var(--border)}
+
+/* ── 商品テーブル ─ */
+.slip-table-wrap{overflow-x:auto;margin-bottom:20px}
+.slip-table{width:100%;border-collapse:collapse;font-size:13px}
+.slip-table thead th{
+  background:#f0f4f8;padding:9px 12px;text-align:left;font-size:12px;
+  font-weight:700;color:var(--text-sub);border-bottom:2px solid var(--border);white-space:nowrap;
+}
+.slip-table tbody tr{border-bottom:1px solid var(--border);transition:background .1s}
+.slip-table tbody tr:hover{background:#f8fafc}
+.slip-table tbody td{padding:10px 12px;vertical-align:middle}
+.slip-table tfoot td{
+  padding:10px 12px;border-top:2px solid var(--border);
+  font-weight:700;background:#f8fafc;
+}
+
+/* 行ステータスセレクト */
+.row-status-sel{
+  padding:4px 8px;border:1.5px solid var(--border);border-radius:6px;
+  font-size:12px;font-family:var(--font);cursor:pointer;background:#fff;
+}
+.row-status-sel:focus{outline:none;border-color:var(--primary)}
+
+/* ── 備考 ─ */
+.slip-note{background:#fffdf0;border:1.5px solid #f0e8a0;border-radius:8px;padding:12px 16px;font-size:13px;margin-bottom:20px}
+.slip-note-label{font-size:11px;font-weight:700;color:#b8860b;margin-bottom:4px}
+
+/* ── 印刷ボタンエリア ─ */
+.print-area{display:flex;gap:10px;justify-content:flex-end;padding-top:16px;border-top:1.5px solid var(--border)}
+
+/* トースト */
+#toast{position:fixed;bottom:24px;right:24px;z-index:9999;background:#1a2533;color:#fff;padding:12px 20px;border-radius:8px;font-size:14px;box-shadow:0 4px 20px rgba(0,0,0,.2);opacity:0;transform:translateY(8px);transition:all .3s;pointer-events:none}
+#toast.show{opacity:1;transform:translateY(0)}
+#toast.success{background:#1a6e3c}
+#toast.error{background:#c0392b}
+
+/* ── 印刷スタイル ─ */
+@media print {
+  @page{size:A4 landscape;margin:12mm}
+  .top-bar,.order-list-panel,.action-bar,.print-area,.btn,.row-status-sel{display:none!important}
+  #toast{display:none!important}
+  body,html{background:#fff!important}
+  .two-col{display:block!important}
+  .detail-panel{box-shadow:none!important;border:none!important;padding:0!important}
+  .slip-table{font-size:11px}
+  .slip-table thead th,.slip-table tbody td,.slip-table tfoot td{padding:6px 8px}
+  .status-badge{border:1px solid #ccc!important}
+  .slip-note{border:1px solid #ccc!important}
+}
+</style>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;500;600;700&display=swap" rel="stylesheet">
+</head>
+<body>
+
+<div class="top-bar">
+  <a href="admin.html">← 管理者サイト</a>
+  <h1>📄 注文処理ページ</h1>
+  <button class="btn btn-secondary" id="reload-btn">🔄 更新</button>
+  <button class="btn btn-print" style="color:#fff;background:rgba(255,255,255,.15);border-color:rgba(255,255,255,.3)" id="print-btn">🖨 印刷</button>
+</div>
+
+<div class="page-body">
+  <div class="two-col">
+
+    <!-- 左：注文リスト -->
+    <div class="order-list-panel">
+      <div class="order-list-header">
+        <span>注文一覧</span>
+        <label style="display:flex;align-items:center;gap:5px;font-size:12px;font-weight:400;cursor:pointer">
+          <input type="checkbox" id="show-done"> 払い出し済
+        </label>
+      </div>
+      <div class="order-list-search">
+        <input type="text" id="list-search" placeholder="部署名・注文IDで検索">
+      </div>
+      <div class="order-list-items" id="order-list-items">
+        <div style="text-align:center;padding:24px;color:var(--text-sub);font-size:13px">読み込み中…</div>
+      </div>
+    </div>
+
+    <!-- 右：帳票 -->
+    <div class="detail-panel" id="detail-panel">
+      <div class="no-order" id="no-order">← 左のリストから注文を選択してください</div>
+      <div id="slip-area" style="display:none"></div>
+    </div>
+
+  </div>
+</div>
+
+<div id="toast"></div>
+
+<script>
+const GAS_URL = 'YOUR_GAS_DEPLOY_URL_HERE'; // ★要変更
+
+async function gasGet(p){
+  const qs=Object.entries(p).map(([k,v])=>encodeURIComponent(k)+'='+encodeURIComponent(v??'')).join('&');
+  const res=await fetch(GAS_URL+'?'+qs,{redirect:'follow'});
+  const text=await res.text();
+  try{return JSON.parse(text);}catch{return{ok:false,error:'サーバーエラー（JSONパース失敗）'};}
+}
+function getSession(){try{return JSON.parse(sessionStorage.getItem('hms_session')||'null');}catch{return null;}}
+function showToast(msg,type='',dur=2800){
+  const el=document.getElementById('toast');el.textContent=msg;el.className='show '+(type||'');
+  setTimeout(()=>el.className='',dur);
+}
+function escHtml(s){return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
+function fmt(n){return '¥'+Number(n||0).toLocaleString();}
+function statusBadgeCls(s){return s==='払い出し済'?'s-done':s==='発注済'?'s-ordered':'s-new';}
+
+// セッションチェック（管理者のみ）
+const session=getSession();
+if(!session||session.role!=='admin'){location.href='portal.html';}
+
+// URLパラメータから注文ID
+const urlParams=new URLSearchParams(location.search);
+const initOrderId=urlParams.get('orderId')||'';
+
+// ── 注文リスト ────────────────────────────────────────────────
+let allOrders=[], currentOrderId='', showDone=false;
+
+async function loadOrderList(){
+  const res=await gasGet({action:'getAllOrders',token:session.token,includeComplete:showDone?'true':'false'});
+  if(!res.ok){showToast('注文一覧の取得に失敗しました','error');return;}
+
+  // 注文ID単位でグループ化
+  const byId={};
+  (res.data||[]).forEach(o=>{
+    if(!byId[o.orderId])byId[o.orderId]={orderId:o.orderId,orderedAt:o.orderedAt,deptName:o.deptName,deptId:o.deptId,status:o.status,items:[]};
+    byId[o.orderId].items.push(o);
+  });
+  allOrders=Object.values(byId).sort((a,b)=>b.orderedAt.localeCompare(a.orderedAt));
+  renderOrderList();
+
+  // URLから注文IDが指定されていれば自動選択
+  if(initOrderId&&!currentOrderId){
+    const found=allOrders.find(o=>o.orderId===initOrderId);
+    if(found)selectOrder(found.orderId);
+  }
+}
+
+function renderOrderList(){
+  const kw=document.getElementById('list-search').value.trim().toLowerCase();
+  const filtered=allOrders.filter(o=>
+    !kw||(o.deptName.toLowerCase().includes(kw)||o.orderId.toLowerCase().includes(kw))
+  );
+  const el=document.getElementById('order-list-items');
+  if(!filtered.length){el.innerHTML='<div style="text-align:center;padding:24px;color:var(--text-sub);font-size:13px">注文がありません</div>';return;}
+
+  const badgeCls={受付済:'s-new',発注済:'s-ordered',払い出し済:'s-done'};
+  el.innerHTML=filtered.map(o=>`
+    <div class="order-list-item${o.orderId===currentOrderId?' active':''}" data-id="${o.orderId}">
+      <div class="oli-id">${escHtml(o.orderId)}</div>
+      <div class="oli-dept">${escHtml(o.deptName)}</div>
+      <div class="oli-date">${escHtml(o.orderedAt?.slice(0,10)||'-')} / ${o.items.length}品目</div>
+      <span class="oli-badge"><span class="status-badge ${badgeCls[o.status]||'s-new'}" style="font-size:11px;padding:2px 8px">${o.status}</span></span>
+    </div>`).join('');
+
+  el.querySelectorAll('.order-list-item').forEach(item=>{
+    item.addEventListener('click',()=>selectOrder(item.dataset.id));
+  });
+}
+
+// ── 注文詳細（帳票） ─────────────────────────────────────────
+async function selectOrder(orderId){
+  currentOrderId=orderId;
+  renderOrderList(); // アクティブ表示更新
+
+  const res=await gasGet({action:'getOrderDetail',token:session.token,orderId});
+  if(!res.ok){showToast('詳細取得失敗: '+res.error,'error');return;}
+  renderSlip(res.data);
+}
+
+function renderSlip(order){
+  document.getElementById('no-order').style.display='none';
+  const slip=document.getElementById('slip-area');
+  slip.style.display='block';
+
+  const total=order.items.reduce((s,i)=>s+(Number(i.price)||0)*i.qty,0);
+  const allStatuses=['受付済','発注済','払い出し済'];
+
+  slip.innerHTML=`
+    <!-- 帳票ヘッダー -->
+    <div class="slip-header">
+      <div class="slip-title-area">
+        <h2>📋 物品請求伝票</h2>
+        <div class="slip-id">${escHtml(order.orderId)}</div>
+      </div>
+      <div class="slip-meta">
+        <div>部署：<strong>${escHtml(order.deptName)}</strong></div>
+        <div>注文日時：${escHtml(order.orderedAt?.slice(0,16)||'-')}</div>
+        <div style="margin-top:6px">
+          ステータス：<span class="status-badge ${statusBadgeCls(order.status)}">${escHtml(order.status)}</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- アクションバー（一括変更） -->
+    <div class="action-bar">
+      <span class="action-bar-label">注文全体を一括変更：</span>
+      <button class="btn btn-sm btn-warning" id="bulk-ordered">📦 発注済にする</button>
+      <button class="btn btn-sm btn-done" id="bulk-done">✅ 払い出し済にする</button>
+      <div class="sep"></div>
+      <span style="font-size:12px;color:var(--text-sub)">行単位で変更する場合は下のセレクトボックスを使用</span>
+    </div>
+
+    <!-- 備考 -->
+    ${order.items[0]?.note?`<div class="slip-note"><div class="slip-note-label">📝 備考・依頼事項</div>${escHtml(order.items[0].note)}</div>`:''}
+
+    <!-- 商品テーブル -->
+    <div class="slip-table-wrap">
+      <table class="slip-table">
+        <thead>
+          <tr>
+            <th>#</th>
+            <th>品名</th>
+            <th>型番</th>
+            <th>規格</th>
+            <th>単位</th>
+            <th style="text-align:right">数量</th>
+            <th style="text-align:right">単価</th>
+            <th style="text-align:right">小計</th>
+            <th>注文先</th>
+            <th>リンク</th>
+            <th>ステータス</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${order.items.map((item,i)=>`
+            <tr data-code="${escHtml(item.code)}">
+              <td style="color:var(--text-sub);text-align:center">${i+1}</td>
+              <td><strong>${escHtml(item.name)}</strong></td>
+              <td style="font-size:12px">${escHtml(item.model||'-')}</td>
+              <td style="font-size:12px">${escHtml(item.spec||'-')}</td>
+              <td>${escHtml(item.unit||'-')}</td>
+              <td style="text-align:right;font-weight:600">${item.qty}</td>
+              <td style="text-align:right">${item.price?fmt(item.price):'-'}</td>
+              <td style="text-align:right;font-weight:600">${item.price?fmt(Number(item.price)*item.qty):'-'}</td>
+              <td style="font-size:12px">${escHtml(item.vendor||'-')}</td>
+              <td>${item.link1?`<a href="${item.link1}" target="_blank" class="btn btn-sm btn-outline" style="font-size:11px">🔗</a>`:'-'}</td>
+              <td>
+                <select class="row-status-sel" data-code="${escHtml(item.code)}">
+                  ${allStatuses.map(s=>`<option${s===item.status?' selected':''}>${s}</option>`).join('')}
+                </select>
+              </td>
+            </tr>`).join('')}
+        </tbody>
+        <tfoot>
+          <tr>
+            <td colspan="7" style="text-align:right;font-size:13px">合計金額（参考・税込）</td>
+            <td style="text-align:right;font-size:16px;color:var(--primary)">${fmt(total)}</td>
+            <td colspan="3"></td>
+          </tr>
+        </tfoot>
+      </table>
+    </div>
+
+    <!-- 印刷・戻るボタン -->
+    <div class="print-area">
+      <button class="btn btn-primary" id="slip-print-btn">🖨 A4横で印刷</button>
+    </div>
+  `;
+
+  // 行ステータス変更
+  slip.querySelectorAll('.row-status-sel').forEach(sel=>{
+    sel.addEventListener('change',async function(){
+      const code=this.dataset.code;
+      const newStatus=this.value;
+      const res=await gasGet({action:'updateOrderStatus',token:session.token,orderId:order.orderId,status:newStatus,code});
+      if(res.ok){
+        showToast(`${code} を「${newStatus}」に変更しました`,'success');
+        // ローカルの order データも更新
+        const item=order.items.find(i=>i.code===code);
+        if(item)item.status=newStatus;
+        loadOrderList();
+      }else{
+        showToast('変更失敗: '+res.error,'error');
+        this.value=order.items.find(i=>i.code===code)?.status||'受付済';
+      }
+    });
+  });
+
+  // 一括変更
+  document.getElementById('bulk-ordered').addEventListener('click',async()=>{
+    if(!confirm('この注文の全商品を「発注済」に変更しますか？'))return;
+    await _bulkChange(order.orderId,'発注済');
+  });
+  document.getElementById('bulk-done').addEventListener('click',async()=>{
+    if(!confirm('この注文の全商品を「払い出し済」に変更しますか？'))return;
+    await _bulkChange(order.orderId,'払い出し済');
+  });
+
+  document.getElementById('slip-print-btn').addEventListener('click',()=>window.print());
+}
+
+async function _bulkChange(orderId,newStatus){
+  const res=await gasGet({action:'bulkUpdateStatus',token:session.token,orderIds:JSON.stringify([orderId]),status:newStatus});
+  if(res.ok){
+    showToast(`「${newStatus}」に変更しました`,'success');
+    await loadOrderList();
+    selectOrder(orderId);
+  }else{
+    showToast('変更失敗: '+res.error,'error');
+  }
+}
+
+// ── コントロール ─────────────────────────────────────────────
+document.getElementById('show-done').addEventListener('change',function(){
+  showDone=this.checked;loadOrderList();
+});
+document.getElementById('list-search').addEventListener('input',renderOrderList);
+document.getElementById('reload-btn').addEventListener('click',async()=>{
+  await loadOrderList();
+  if(currentOrderId)selectOrder(currentOrderId);
+  showToast('更新しました');
+});
+document.getElementById('print-btn').addEventListener('click',()=>window.print());
+
+// ── 初期化 ───────────────────────────────────────────────────
+loadOrderList();
+</script>
+</body>
+</html>
