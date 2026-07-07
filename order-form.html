@@ -1,0 +1,968 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>物品請求伝票 | 物品管理システム</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;500;700&family=DM+Sans:wght@400;500;600&display=swap');
+:root {
+  --primary:#0d7a6b; --primary-lt:#e6f4f2; --primary-dk:#095c51;
+  --accent:#f0a500; --danger:#e03e3e;
+  --bg:#f5f7fa; --card:#ffffff; --border:#dde3eb;
+  --text:#1a2233; --text-muted:#6b7a93;
+  --shadow:0 2px 12px rgba(0,0,0,.07); --radius:10px;
+}
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Noto Sans JP',sans-serif;background:var(--bg);color:var(--text);min-height:100vh}
+
+/* ---- ヘッダー ---- */
+.header{background:var(--primary);color:#fff;padding:0 24px;height:56px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:100;box-shadow:0 2px 8px rgba(0,0,0,.2)}
+.header-title{font-family:'DM Sans',sans-serif;font-size:17px;font-weight:600;letter-spacing:.3px}
+.header-dept{font-size:13px;opacity:.85;display:flex;align-items:center;gap:8px}
+.header-dept span{background:rgba(255,255,255,.2);border-radius:20px;padding:2px 12px;font-weight:500}
+
+/* ---- メインレイアウト ---- */
+.main{max-width:1100px;margin:0 auto;padding:24px 16px 80px;display:grid;grid-template-columns:1fr 340px;gap:20px}
+@media(max-width:800px){.main{grid-template-columns:1fr}}
+
+/* ---- カード ---- */
+.card{background:var(--card);border-radius:var(--radius);box-shadow:var(--shadow);border:1px solid var(--border)}
+.card-header{padding:14px 20px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between}
+.card-title{font-size:14px;font-weight:700;color:var(--primary);display:flex;align-items:center;gap:8px}
+.card-title::before{content:'';display:inline-block;width:4px;height:16px;background:var(--primary);border-radius:2px}
+.card-body{padding:20px}
+
+/* ---- タブ ---- */
+.tabs{display:flex;gap:4px;margin-bottom:14px;border-bottom:2px solid var(--border)}
+.tab{padding:8px 16px;font-size:13px;font-weight:600;cursor:pointer;color:var(--text-muted);border-bottom:2px solid transparent;margin-bottom:-2px;transition:all .15s;background:none;border-top:none;border-left:none;border-right:none;font-family:inherit}
+.tab:hover{color:var(--primary)}
+.tab.active{color:var(--primary);border-bottom-color:var(--primary)}
+
+/* ---- 検索 ---- */
+.search-wrap{position:relative;margin-bottom:16px}
+.search-wrap input{width:100%;padding:10px 16px 10px 40px;border:1px solid var(--border);border-radius:8px;font-size:14px;font-family:inherit;transition:border-color .2s,box-shadow .2s;background:var(--bg)}
+.search-wrap input:focus{outline:none;border-color:var(--primary);box-shadow:0 0 0 3px var(--primary-lt);background:#fff}
+.search-icon{position:absolute;left:12px;top:50%;transform:translateY(-50%);color:var(--text-muted);pointer-events:none;font-size:16px}
+
+/* ---- カテゴリフィルター ---- */
+.filter-row{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:14px}
+.filter-tag{padding:4px 12px;border-radius:20px;border:1px solid var(--border);background:var(--card);font-size:12px;font-weight:500;cursor:pointer;transition:all .15s;color:var(--text-muted)}
+.filter-tag:hover{border-color:var(--primary);color:var(--primary)}
+.filter-tag.active{background:var(--primary);color:#fff;border-color:var(--primary)}
+
+/* ---- 商品テーブル ---- */
+.product-table-wrap{overflow-x:auto;border-radius:8px;border:1px solid var(--border);max-height:460px;overflow-y:auto}
+.product-table{width:100%;border-collapse:collapse;font-size:13px}
+.product-table thead{background:var(--bg);position:sticky;top:0;z-index:1}
+.product-table th{padding:10px 12px;text-align:left;font-weight:700;font-size:12px;color:var(--text-muted);border-bottom:1px solid var(--border);white-space:nowrap}
+.product-table td{padding:10px 12px;border-bottom:1px solid #f0f3f8;vertical-align:middle}
+.product-table tr:last-child td{border-bottom:none}
+.product-table tr:hover td{background:var(--primary-lt)}
+.product-name{font-weight:600;color:var(--text);line-height:1.4}
+.product-spec{font-size:11px;color:var(--text-muted);margin-top:2px}
+.product-price{font-family:'DM Sans',sans-serif;font-weight:600;color:var(--primary);white-space:nowrap}
+.link-btn{display:inline-flex;align-items:center;gap:3px;font-size:11px;color:var(--primary);text-decoration:none;background:var(--primary-lt);padding:2px 8px;border-radius:4px;font-weight:500}
+.link-btn:hover{background:var(--primary);color:#fff}
+
+/* 数量操作（テーブル内） */
+.qty-wrap{display:flex;align-items:center;gap:4px}
+.qty-btn{width:26px;height:26px;border:1px solid var(--border);border-radius:5px;background:var(--bg);cursor:pointer;font-size:16px;line-height:1;display:flex;align-items:center;justify-content:center;color:var(--text);transition:all .15s}
+.qty-btn:hover{background:var(--primary);color:#fff;border-color:var(--primary)}
+.qty-input{width:48px;text-align:center;padding:4px 6px;border:1px solid var(--border);border-radius:5px;font-size:13px;font-family:'DM Sans',sans-serif;font-weight:600}
+.qty-input:focus{outline:none;border-color:var(--primary)}
+.add-btn{padding:5px 12px;background:var(--primary);color:#fff;border:none;border-radius:6px;font-size:12px;font-weight:600;cursor:pointer;white-space:nowrap;transition:background .15s;font-family:inherit}
+.add-btn:hover{background:var(--primary-dk)}
+.add-btn.in-order{background:#fff;color:var(--primary);border:1.5px solid var(--primary)}
+.add-btn.in-order:hover{background:var(--primary-lt)}
+
+/* ---- 注文パネル ---- */
+.order-panel{position:sticky;top:72px}
+.order-empty{text-align:center;color:var(--text-muted);font-size:13px;padding:32px 0}
+.order-empty-icon{font-size:36px;margin-bottom:8px}
+.order-item{padding:12px 0;border-bottom:1px solid #f0f3f8;animation:slideIn .2s ease}
+@keyframes slideIn{from{opacity:0;transform:translateY(-6px)}to{opacity:1;transform:translateY(0)}}
+.order-item:last-child{border-bottom:none}
+.order-item-name{font-weight:600;font-size:13px;line-height:1.4}
+.order-item-spec{font-size:11px;color:var(--text-muted);margin-top:2px}
+.order-item-row{display:flex;justify-content:space-between;align-items:center;margin-top:6px}
+.order-qty-wrap{display:flex;align-items:center;gap:3px}
+.order-qty-btn{width:22px;height:22px;border:1px solid var(--border);border-radius:4px;background:var(--bg);cursor:pointer;font-size:14px;line-height:1;display:flex;align-items:center;justify-content:center;color:var(--text);transition:all .15s;padding:0}
+.order-qty-btn:hover{background:var(--primary);color:#fff;border-color:var(--primary)}
+.order-qty-input{width:40px;text-align:center;padding:2px 4px;border:1px solid var(--border);border-radius:4px;font-size:13px;font-family:'DM Sans',sans-serif;font-weight:600;color:var(--primary)}
+.order-qty-input:focus{outline:none;border-color:var(--primary)}
+.order-item-price{font-family:'DM Sans',sans-serif;font-size:12px;color:var(--text-muted)}
+.order-item-del{background:none;border:none;color:var(--text-muted);cursor:pointer;font-size:16px;padding:2px 4px;border-radius:4px;line-height:1}
+.order-item-del:hover{color:var(--danger);background:#ffeaea}
+.order-total{padding:14px 0 4px;border-top:2px solid var(--border);display:flex;justify-content:space-between;align-items:center}
+.order-total-label{font-size:13px;font-weight:700}
+.order-total-price{font-family:'DM Sans',sans-serif;font-size:20px;font-weight:600;color:var(--primary)}
+.note-wrap{margin-top:12px}
+.note-wrap label{font-size:12px;font-weight:600;color:var(--text-muted);display:block;margin-bottom:4px}
+.note-wrap textarea{width:100%;border:1px solid var(--border);border-radius:6px;padding:8px 10px;font-size:13px;font-family:inherit;resize:vertical;min-height:64px;transition:border-color .2s}
+.note-wrap textarea:focus{outline:none;border-color:var(--primary)}
+.submit-btn{width:100%;padding:13px;background:var(--primary);color:#fff;border:none;border-radius:8px;font-size:15px;font-weight:700;cursor:pointer;margin-top:14px;font-family:inherit;transition:background .15s,transform .1s;display:flex;align-items:center;justify-content:center;gap:8px}
+.submit-btn:hover{background:var(--primary-dk)}
+.submit-btn:active{transform:scale(.98)}
+.submit-btn:disabled{background:var(--border);cursor:default;transform:none}
+.badge{display:inline-block;background:var(--accent);color:#fff;font-size:10px;font-weight:700;border-radius:10px;padding:1px 7px;margin-left:4px;font-family:'DM Sans',sans-serif}
+
+/* ---- サムネイル ---- */
+.product-thumb{
+  width:44px;height:44px;border-radius:6px;overflow:hidden;
+  border:1px solid var(--border);background:var(--bg);
+  display:flex;align-items:center;justify-content:center;flex-shrink:0;
+}
+.product-thumb img{
+  width:44px;height:44px;object-fit:cover;display:block;
+}
+.product-thumb-icon{font-size:20px;line-height:1}
+
+/* ---- ローディング ---- */
+.loading{text-align:center;padding:40px;color:var(--text-muted);font-size:14px}
+.spinner{display:inline-block;width:28px;height:28px;border:3px solid var(--border);border-top-color:var(--primary);border-radius:50%;animation:spin .7s linear infinite;margin-bottom:10px}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+/* ---- トースト ---- */
+.toast-wrap{position:fixed;bottom:24px;right:24px;z-index:999;display:flex;flex-direction:column;gap:8px}
+.toast{background:var(--text);color:#fff;border-radius:8px;padding:12px 18px;font-size:14px;box-shadow:0 4px 16px rgba(0,0,0,.2);animation:toastIn .25s ease;display:flex;align-items:center;gap:10px;min-width:240px}
+.toast.success{background:var(--primary)}
+.toast.error{background:var(--danger)}
+@keyframes toastIn{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:translateY(0)}}
+
+/* ---- モーダル（注文確認） ---- */
+.modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:200;display:flex;align-items:center;justify-content:center;padding:20px;animation:fadeIn .2s}
+@keyframes fadeIn{from{opacity:0}to{opacity:1}}
+.modal{background:var(--card);border-radius:14px;padding:28px;max-width:520px;width:100%;box-shadow:0 20px 60px rgba(0,0,0,.25);max-height:90vh;overflow-y:auto}
+.modal-title{font-size:18px;font-weight:700;margin-bottom:16px;display:flex;align-items:center;gap:8px}
+.modal-body{font-size:14px;line-height:1.7;color:var(--text-muted)}
+.modal-items{margin:14px 0;background:var(--bg);border-radius:8px;padding:12px 16px}
+.modal-item{display:flex;justify-content:space-between;align-items:flex-start;padding:6px 0;font-size:13px;border-bottom:1px solid var(--border)}
+.modal-item:last-child{border-bottom:none}
+.modal-item-name{color:var(--text);flex:1}
+.modal-item-detail{font-size:11px;color:var(--text-muted);margin-top:2px}
+.modal-item-qty{font-weight:700;color:var(--primary);font-family:'DM Sans',sans-serif;white-space:nowrap;margin-left:12px}
+.modal-total{display:flex;justify-content:space-between;align-items:center;padding:10px 0;font-weight:700;font-size:14px;border-top:2px solid var(--border);margin-top:6px}
+.modal-total-price{font-family:'DM Sans',sans-serif;font-size:20px;font-weight:700;color:var(--primary)}
+.modal-note{background:#fffdf0;border:1px solid #f0e8a0;border-radius:8px;padding:10px 14px;font-size:13px;margin-top:10px;color:var(--text)}
+.modal-footer{display:flex;gap:10px;margin-top:20px}
+.btn-cancel{flex:1;padding:11px;border:1px solid var(--border);background:var(--card);border-radius:8px;font-size:14px;cursor:pointer;font-family:inherit;font-weight:600;color:var(--text-muted)}
+.btn-cancel:hover{background:var(--bg)}
+.btn-confirm{flex:2;padding:11px;background:var(--primary);color:#fff;border:none;border-radius:8px;font-size:14px;cursor:pointer;font-family:inherit;font-weight:700}
+.btn-confirm:hover{background:var(--primary-dk)}
+.btn-confirm:disabled{background:var(--border);cursor:not-allowed}
+
+/* ---- 完了画面 ---- */
+.complete-view{text-align:center;padding:32px 20px}
+.complete-icon{width:72px;height:72px;background:var(--primary-lt);border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:36px;margin:0 auto 16px}
+.complete-id{font-family:'DM Sans',sans-serif;font-size:13px;background:var(--bg);border-radius:6px;padding:8px 16px;display:inline-block;margin:8px 0 12px;color:var(--text-muted);letter-spacing:.5px}
+.complete-id strong{font-size:17px;color:var(--primary);display:block;margin-top:2px}
+.complete-msg{color:var(--text-muted);font-size:13px;line-height:1.8}
+
+/* ---- エラー ---- */
+.error-msg{background:#ffeaea;color:var(--danger);border-radius:8px;padding:12px 16px;font-size:13px;margin-bottom:14px;display:none}
+</style>
+</head>
+<body>
+
+<!-- ヘッダー -->
+<header class="header">
+  <div class="header-title">📋 物品請求伝票</div>
+  <div class="header-dept">
+    <a href="product-request.html" data-request-link rel="noopener" style="color:rgba(255,255,255,.85);font-size:12px;text-decoration:none;margin-right:14px;padding:4px 10px;border:1px solid rgba(255,255,255,.4);border-radius:6px">📦 商品登録依頼はこちら</a>
+    <span id="dept-name-header">読み込み中...</span>
+    <a href="portal.html" style="color:rgba(255,255,255,.7);font-size:12px;text-decoration:none">← ポータルへ</a>
+  </div>
+</header>
+
+<!-- メイン -->
+<div class="main">
+
+  <!-- 左：商品選択 -->
+  <div>
+    <div class="card">
+      <div class="card-header">
+        <div class="card-title">商品を選択</div>
+        <div style="font-size:12px;color:var(--text-muted)" id="product-count"></div>
+      </div>
+      <div class="card-body">
+        <!-- タブ -->
+        <div class="tabs">
+          <button class="tab active" onclick="switchTab('all')">すべての商品</button>
+          <button class="tab" onclick="switchTab('frequent')" id="tab-frequent">よく頼む商品</button>
+        </div>
+        <!-- 検索 -->
+        <div class="search-wrap">
+          <span class="search-icon">🔍</span>
+          <input type="text" id="search-input" placeholder="品名・型番・種別で検索（スペース区切りでAND検索）">
+        </div>
+        <!-- カテゴリフィルター -->
+        <div class="filter-row" id="filter-row">
+          <button class="filter-tag active" onclick="filterByCategory('')">すべて</button>
+        </div>
+        <!-- エラー -->
+        <div class="error-msg" id="error-msg"></div>
+        <!-- 商品テーブル -->
+        <div class="product-table-wrap" id="product-table-wrap">
+          <div class="loading"><div class="spinner"></div><br>商品マスタを読み込み中...</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 右：注文リスト -->
+  <div>
+    <div class="card order-panel">
+      <div class="card-header">
+        <div class="card-title">
+          注文リスト
+          <span class="badge" id="order-badge" style="display:none">0</span>
+        </div>
+        <button onclick="clearOrder()" style="font-size:11px;color:var(--text-muted);background:none;border:none;cursor:pointer">クリア</button>
+      </div>
+      <div class="card-body">
+        <div id="order-list">
+          <div class="order-empty">
+            <div class="order-empty-icon">🛒</div>
+            商品を選択して<br>注文リストに追加してください
+          </div>
+        </div>
+        <div class="order-total" id="order-total" style="display:none">
+          <div class="order-total-label">合計（参考）</div>
+          <div class="order-total-price" id="total-price">¥0</div>
+        </div>
+        <div class="note-wrap">
+          <label>備考・特記事項</label>
+          <textarea id="order-note" placeholder="急ぎの場合や特別な指定がある場合に記入してください"></textarea>
+        </div>
+        <button class="submit-btn" id="submit-btn" onclick="openConfirm()" disabled>
+          📤 注文を送信する
+        </button>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<!-- 確認モーダル -->
+<div class="modal-overlay" id="confirm-modal" style="display:none">
+  <div class="modal">
+    <div class="modal-title">📋 注文内容の確認</div>
+    <div class="modal-body">以下の内容で注文を送信します。総務課へメールで通知されます。</div>
+    <div class="modal-items" id="confirm-items"></div>
+    <div class="modal-footer">
+      <button class="btn-cancel" onclick="closeConfirm()">戻る</button>
+      <button class="btn-confirm" id="confirm-btn" onclick="submitOrder()">✅ この内容で送信する</button>
+    </div>
+  </div>
+</div>
+
+<!-- 完了モーダル -->
+<div class="modal-overlay" id="complete-modal" style="display:none">
+  <div class="modal">
+    <div class="complete-view">
+      <div class="complete-icon">✅</div>
+      <div style="font-size:17px;font-weight:700">注文が完了しました</div>
+      <div class="complete-id">注文ID<strong id="complete-order-id">—</strong></div>
+      <div class="complete-msg">
+        総務課へ通知メールが送信されました。<br>
+        払い出しの準備が整い次第、ご連絡します。
+      </div>
+      <a id="complete-request-link" href="#" rel="noopener"
+        style="display:block;margin-top:16px;font-size:13px;color:var(--primary);text-decoration:none;border:1px solid var(--primary);padding:9px 14px;border-radius:8px">
+        📦 今回の注文に必要な商品が見つからなかった場合はこちら（商品登録依頼）
+      </a>
+      <button class="submit-btn" style="margin-top:12px" onclick="resetForm()">続けて注文する</button>
+    </div>
+  </div>
+</div>
+
+<!-- トースト -->
+<div class="toast-wrap" id="toast-wrap"></div>
+
+<script>
+// ============================================================
+//  設定 ★要変更
+// ============================================================
+const GAS_URL = 'https://script.google.com/macros/s/AKfycbzoRS-BS7B8ed2I9fOykpogsPhNvkmCDLnb5p4_VWjBC7qhTx0WMdzNhX6WXucVEA5j/exec';
+
+// ============================================================
+//  JSONP通信（GitHub Pages → GAS CORS回避）
+// ============================================================
+function gasGet(params) {
+  return new Promise((resolve, reject) => {
+    const cbName = '_gasCallback_' + Date.now() + '_' + Math.floor(Math.random() * 10000);
+    const qs = Object.entries({ ...params, callback: cbName })
+      .map(([k, v]) => encodeURIComponent(k) + '=' + encodeURIComponent(
+        (v !== null && typeof v === 'object') ? JSON.stringify(v) : String(v ?? '')
+      )).join('&');
+    const script = document.createElement('script');
+    const timer = setTimeout(() => { cleanup(); reject(new Error('タイムアウト')); }, 20000);
+    function cleanup() { clearTimeout(timer); delete window[cbName]; if (script.parentNode) script.parentNode.removeChild(script); }
+    window[cbName] = (data) => { cleanup(); resolve(data); };
+    script.src = GAS_URL + '?' + qs;
+    script.onerror = () => { cleanup(); reject(new Error('接続エラー')); };
+    document.head.appendChild(script);
+  });
+}
+
+// ============================================================
+//  セッション・部署情報
+// ============================================================
+function getSession() { try { return JSON.parse(sessionStorage.getItem('hms_session') || 'null'); } catch { return null; } }
+
+const session  = getSession();
+const deptInfo = session
+  ? { id: session.deptId, name: session.deptName, token: session.token }
+  : { id: 'D001', name: '（未ログイン）', token: '' };
+
+document.getElementById('dept-name-header').textContent = deptInfo.name;
+
+// ============================================================
+//  別タブへセッションを引き継ぐURLを生成
+//  （sessionStorageは新しいタブに引き継がれないため、
+//    トークン等をURLパラメータで渡し、遷移先で再構築する）
+// ============================================================
+function withSession(path, extraParams) {
+  const params = new URLSearchParams(extraParams || {});
+  if (session) {
+    params.set('token',    session.token);
+    params.set('role',     session.role);
+    params.set('deptId',   session.deptId);
+    params.set('deptName', session.deptName);
+  }
+  const qs = params.toString();
+  return qs ? `${path}?${qs}` : path;
+}
+
+// 商品登録依頼フォームを「別ウィンドウ」として開く
+// （target="_blank"はブラウザ設定でタブ表示になる場合があるため、
+//   window.openにサイズ指定を渡すことで独立したウィンドウとして開かせる）
+function openRequestWindow(url) {
+  window.open(
+    url,
+    'hms_product_request', // 同じ名前を指定することで、複数回押しても同じウィンドウを再利用する
+    'width=860,height=900,resizable=yes,scrollbars=yes,menubar=no,toolbar=no,location=no,status=no'
+  );
+  return false;
+}
+
+// ヘッダー・検索結果0件時のリンク先に、ログイン中のセッションを引き継がせる
+document.querySelectorAll('a[data-request-link]').forEach(a => {
+  const url = withSession('product-request.html');
+  a.href = url; // JS無効時やミドルクリック等のフォールバック用
+  a.addEventListener('click', function(e) {
+    e.preventDefault();
+    openRequestWindow(url);
+  });
+});
+
+// ============================================================
+//  カート（サーバー同期・排他制御付き）
+//
+//  localStorage は端末ローカルにしか保存されないため、
+//  別端末・別ブラウザでログインした際にカートが共有されない。
+//  これを解決するため、カート内容はスプレッドシートの
+//  「カート」シートに保存し、GAS経由で読み書きする。
+//
+//  排他制御：
+//  - GAS側で LockService により部署単位の同時書き込みを防止
+//  - バージョン番号による楽観的ロックで、他端末が先に保存して
+//    いた場合は競合を検知し、最新内容を取り込んでから再試行する
+//
+//  ローカルキャッシュ：
+//  - 通信中の待ち時間をなくすため、直近のカート内容は
+//    sessionStorage にも一時キャッシュする（表示の即時性のみ目的、
+//    永続化の本体はサーバー側）
+// ============================================================
+let cartVersion = 0; // サーバーから取得した最新バージョン番号
+
+function loadCartCache() {
+  try { return JSON.parse(sessionStorage.getItem('hms_cart_cache_' + deptInfo.id) || '[]'); }
+  catch { return []; }
+}
+function saveCartCache(items) {
+  try { sessionStorage.setItem('hms_cart_cache_' + deptInfo.id, JSON.stringify(items)); } catch {}
+}
+function clearCartCache() {
+  try { sessionStorage.removeItem('hms_cart_cache_' + deptInfo.id); } catch {}
+}
+
+// ── サーバーからカートを取得 ─────────────────────────────────
+async function fetchCartFromServer() {
+  try {
+    const res = await gasGet({ action: 'getCart', token: deptInfo.token });
+    if (!res.ok || !res.data) return [];
+    cartVersion = res.data.version || 0;
+    saveCartCache(res.data.items || []);
+    return res.data.items || [];
+  } catch(e) {
+    console.warn('カート取得エラー（キャッシュを使用）:', e);
+    return loadCartCache(); // 通信失敗時はローカルキャッシュにフォールバック
+  }
+}
+
+// ── サーバーへカートを保存（競合検知・自動リトライ付き） ─────────
+async function persistCartToServer(items, retried) {
+  try {
+    const res = await gasGet({
+      action:  'saveCart',
+      token:   deptInfo.token,
+      items:   JSON.stringify(items),
+      version: cartVersion,
+    });
+    if (!res.ok) throw new Error(res.error);
+
+    if (res.data.conflict) {
+      // 他端末が先に保存していた → 競合通知して最新内容を取り込む
+      if (retried) {
+        // 1回リトライしても競合する場合は手動確認を促す
+        showToast('⚠️ 他の端末で同時にカートが更新されました。最新内容を反映します。', 'error', 5000);
+        cartVersion = res.data.latest.version;
+        saveCartCache(res.data.latest.items);
+        return { conflict: true, items: res.data.latest.items };
+      }
+      // 1回だけ自動的に最新を取り込んで再保存を試みる
+      cartVersion = res.data.latest.version;
+      const merged = res.data.latest.items; // 競合時は最新（サーバー側）を優先
+      return await persistCartToServer(merged, true);
+    }
+
+    cartVersion = res.data.version;
+    saveCartCache(items);
+    return { conflict: false, items };
+
+  } catch(e) {
+    console.warn('カート保存エラー（ローカルキャッシュのみ更新）:', e);
+    saveCartCache(items); // 通信失敗時もローカルには反映し、データ消失を防ぐ
+    return { conflict: false, items, offline: true };
+  }
+}
+
+// ── 旧インターフェースとの互換ラッパー ───────────────────────────
+// （既存コードの呼び出し箇所を大きく変えずに済むよう関数名を維持）
+function loadCart() { return loadCartCache(); }
+
+let _saveCartTimer = null;
+function saveCart(items) {
+  // ローカルキャッシュは即時反映（画面表示の即時性のため）
+  saveCartCache(items);
+  // サーバー保存は短い間隔で連打されないようデバウンス（300ms）
+  clearTimeout(_saveCartTimer);
+  _saveCartTimer = setTimeout(() => { persistCartToServer(items); }, 300);
+}
+
+function clearCart() {
+  clearCartCache();
+  cartVersion = 0;
+  // 送信完了時など即座に消したい場合はサーバーにも反映
+  gasGet({ action: 'clearCart', token: deptInfo.token }).catch(() => {});
+}
+
+// ============================================================
+//  状態管理
+// ============================================================
+let allProducts     = [];
+let filteredProducts= [];
+let orderItems      = {};   // { code: { product, qty } }
+let currentCategory = '';
+let currentTab      = 'all';
+let frequentCodes   = new Set();
+
+// ============================================================
+//  初期化
+// ============================================================
+window.addEventListener('DOMContentLoaded', () => {
+  if (!session) {
+    showToast('⚠️ ログインが必要です。ポータルに戻ります。', 'error');
+    setTimeout(() => { location.href = 'portal.html'; }, 2000);
+    return;
+  }
+  loadProducts();
+  loadFrequentCodes();
+
+  const inp = document.getElementById('search-input');
+  if (inp) {
+    inp.addEventListener('input', applyFilter);
+    inp.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); applyFilter(); } });
+  }
+});
+
+// ============================================================
+//  よく頼む商品（2回以上注文した商品コード取得）
+// ============================================================
+async function loadFrequentCodes() {
+  try {
+    const res = await gasGet({ action: 'getMyOrders', token: deptInfo.token, includeComplete: 'true' });
+    if (!res.ok) return;
+    const countMap = {};
+    (res.data || []).forEach(o => {
+      if (!o.code) return;
+      if (!countMap[o.code]) countMap[o.code] = new Set();
+      countMap[o.code].add(o.orderId);
+    });
+    frequentCodes = new Set(Object.keys(countMap).filter(c => countMap[c].size >= 2));
+    // バッジ更新
+    if (frequentCodes.size > 0) {
+      const tabEl = document.getElementById('tab-frequent');
+      if (tabEl && !tabEl.querySelector('.freq-badge')) {
+        const b = document.createElement('span');
+        b.className = 'freq-badge';
+        b.style.cssText = 'margin-left:5px;background:var(--primary);color:#fff;font-size:10px;font-weight:700;border-radius:10px;padding:1px 6px;font-family:"DM Sans",sans-serif';
+        b.textContent = frequentCodes.size;
+        tabEl.appendChild(b);
+      }
+    }
+    if (currentTab === 'frequent') applyFilter();
+  } catch(e) { console.warn('よく頼む商品 取得エラー:', e); }
+}
+
+// ============================================================
+//  商品マスタ読み込み
+// ============================================================
+async function loadProducts() {
+  try {
+    const res = await gasGet({ action: 'searchProducts', token: deptInfo.token, keyword: '', category: '' });
+    if (!res.ok) throw new Error(res.error);
+    allProducts = res.data;
+    filteredProducts = [...allProducts];
+    buildCategoryFilters();
+    await restoreCartFromStorage();
+    renderProductTable();
+    document.getElementById('product-count').textContent = allProducts.length + ' 件';
+  } catch(e) {
+    showError('商品マスタの読み込みに失敗しました。<br>GASのURL設定を確認してください。');
+    console.error(e);
+  }
+}
+
+// ============================================================
+//  カート復元（サーバーから最新カートを取得）
+//  別端末・別ブラウザで保存したカートもここで反映される
+// ============================================================
+async function restoreCartFromStorage() {
+  const saved = await fetchCartFromServer();
+  if (!Array.isArray(saved) || !saved.length) return;
+  let restored = 0;
+  saved.forEach(item => {
+    const p = allProducts.find(x => x.code === item.code);
+    if (p) { orderItems[item.code] = { product: p, qty: item.qty }; restored++; }
+  });
+  if (restored > 0) {
+    updateOrderPanel();
+    showToast('🛒 保存済みのカートを復元しました（' + restored + '品目）。請求締め切り日までに送信してください。', '', 4500);
+  }
+}
+
+function persistCart() {
+  const arr = Object.values(orderItems).map(i => ({ code: i.product.code, qty: i.qty }));
+  saveCart(arr);
+}
+
+// ============================================================
+//  カテゴリフィルター生成
+// ============================================================
+function buildCategoryFilters() {
+  const cats = [...new Set(allProducts.map(p => p.category).filter(Boolean))].sort();
+  const row  = document.getElementById('filter-row');
+  row.innerHTML = '<button class="filter-tag active" onclick="filterByCategory(\'\')">すべて</button>';
+  cats.forEach(cat => {
+    const btn = document.createElement('button');
+    btn.className  = 'filter-tag';
+    btn.textContent= cat;
+    btn.onclick    = () => filterByCategory(cat);
+    row.appendChild(btn);
+  });
+}
+
+function filterByCategory(cat) {
+  currentCategory = cat;
+  document.querySelectorAll('.filter-tag').forEach(b => {
+    b.classList.toggle('active', b.textContent.trim() === (cat || 'すべて').trim());
+  });
+  document.getElementById('search-input').value = '';
+  applyFilter();
+}
+
+// ============================================================
+//  タブ切り替え
+// ============================================================
+function switchTab(tab) {
+  currentTab = tab;
+  document.querySelectorAll('.tab').forEach((b, i) => {
+    b.classList.toggle('active', (i === 0 && tab === 'all') || (i === 1 && tab === 'frequent'));
+  });
+  applyFilter();
+}
+
+// ============================================================
+//  あいまい検索（全角半角統一・AND検索）
+// ============================================================
+function normalizeStr(s) {
+  return String(s ?? '').toLowerCase()
+    .replace(/[Ａ-Ｚａ-ｚ０-９]/g, c => String.fromCharCode(c.charCodeAt(0) - 0xFEE0))
+    .replace(/　/g, ' ');
+}
+
+function matchesKeyword(p, kw) {
+  if (!kw) return true;
+  const tokens = kw.split(/\s+/).filter(Boolean);
+  const hay = [p.name, p.model, p.spec, p.category, p.code, p.vendor, p.note].map(normalizeStr).join(' ');
+  return tokens.every(t => hay.includes(normalizeStr(t)));
+}
+
+// ============================================================
+//  フィルタリング適用
+// ============================================================
+function applyFilter() {
+  const inp = document.getElementById('search-input');
+  const kw  = normalizeStr((inp ? inp.value : '').trim());
+  const countEl = document.getElementById('product-count');
+
+  let list = [...allProducts];
+
+  // よく頼む商品タブ
+  if (currentTab === 'frequent') {
+    list = frequentCodes.size > 0 ? list.filter(p => frequentCodes.has(p.code)) : [];
+  }
+
+  // キーワードがあれば全種別横断あいまいAND検索、なければカテゴリフィルター
+  if (kw) {
+    list = list.filter(p => matchesKeyword(p, kw));
+    if (countEl) countEl.textContent = list.length + ' 件（全種別から検索）';
+  } else {
+    if (currentCategory) list = list.filter(p => p.category === currentCategory);
+    if (countEl) countEl.textContent = list.length + ' 件';
+  }
+
+  filteredProducts = list;
+  renderProductTable();
+}
+
+// ============================================================
+//  商品テーブル描画
+// ============================================================
+function renderProductTable() {
+  const wrap = document.getElementById('product-table-wrap');
+  if (!filteredProducts.length) {
+    wrap.innerHTML = `<div class="loading" style="color:var(--text-muted)">
+      該当する商品が見つかりませんでした<br>
+      <a href="${withSession('product-request.html')}" onclick="event.preventDefault();openRequestWindow('${withSession('product-request.html')}')" style="display:inline-block;margin-top:10px;font-size:12px;color:var(--primary);text-decoration:none;border:1px solid var(--primary);padding:6px 14px;border-radius:6px">📦 商品登録を依頼する</a>
+    </div>`;
+    return;
+  }
+  const rows = filteredProducts.map(p => {
+    const inOrder = !!orderItems[p.code];
+    const qty     = orderItems[p.code] ? orderItems[p.code].qty : 1;
+    const link    = p.link1
+      ? `<a href="${esc(p.link1)}" onclick="return openInNewWindow(this.href)" class="link-btn">🔗 詳細</a>`
+      : '<span style="color:var(--text-muted);font-size:11px">—</span>';
+
+    // サムネイル：画像URLあればimg、なければアイコン
+    const thumb = p.imageUrl
+      ? `<div class="product-thumb">
+           <img src="${esc(p.imageUrl)}" alt="${esc(p.name)}"
+             onerror="this.parentElement.innerHTML='<span class=&quot;product-thumb-icon&quot;>📦</span>'">
+         </div>`
+      : `<div class="product-thumb"><span class="product-thumb-icon">📦</span></div>`;
+
+    return `<tr data-code="${esc(p.code)}">
+      <td style="width:52px;padding:6px 8px">${thumb}</td>
+      <td>
+        <div class="product-name">${esc(p.name)}</div>
+        <div class="product-spec">${esc(p.model||'')}${p.spec?' / '+esc(p.spec):''}</div>
+      </td>
+      <td><span style="font-size:11px;background:var(--bg);padding:2px 8px;border-radius:4px">${esc(p.category||'—')}</span></td>
+      <td class="product-price">${p.price ? '¥'+Number(p.price).toLocaleString() : '—'}</td>
+      <td style="white-space:nowrap">${esc(p.unit||'—')}</td>
+      <td style="text-align:center;font-size:12px;white-space:nowrap">${p.quantity||p.qtyPerBox||'—'}</td>
+      <td>${link}</td>
+      <td>
+        <div class="qty-wrap">
+          <button class="qty-btn" onclick="changeTableQty('${esc(p.code)}',-1)">−</button>
+          <input class="qty-input" type="number" min="1" value="${qty}" id="qty-${esc(p.code)}"
+            onchange="setTableQty('${esc(p.code)}',this.value)">
+          <button class="qty-btn" onclick="changeTableQty('${esc(p.code)}',1)">＋</button>
+        </div>
+      </td>
+      <td>
+        <button class="add-btn${inOrder?' in-order':''}" onclick="addToOrder('${esc(p.code)}')">
+          ${inOrder ? '✔ 変更' : '＋ 追加'}
+        </button>
+      </td>
+    </tr>`;
+  }).join('');
+
+  wrap.innerHTML = `
+    <table class="product-table">
+      <thead><tr>
+        <th style="width:52px"></th>
+        <th>品名</th><th>種別</th><th>金額</th><th>単位</th><th>入数</th><th>詳細</th><th>数量</th><th></th>
+      </tr></thead>
+      <tbody>${rows}</tbody>
+    </table>`;
+}
+
+// ============================================================
+//  テーブル内数量操作
+// ============================================================
+function changeTableQty(code, delta) {
+  const inp = document.getElementById('qty-' + code);
+  if (!inp) return;
+  const v = Math.max(1, parseInt(inp.value || 1) + delta);
+  inp.value = v;
+  if (orderItems[code]) { orderItems[code].qty = v; persistCart(); updateOrderPanel(); }
+}
+function setTableQty(code, val) {
+  const v = Math.max(1, parseInt(val) || 1);
+  if (orderItems[code]) { orderItems[code].qty = v; persistCart(); updateOrderPanel(); }
+}
+
+// ============================================================
+//  注文リスト操作
+// ============================================================
+function addToOrder(code) {
+  const p = allProducts.find(x => x.code === code);
+  if (!p) return;
+  const inp = document.getElementById('qty-' + code);
+  const qty = inp ? Math.max(1, parseInt(inp.value) || 1) : 1;
+  orderItems[code] = { product: p, qty };
+  persistCart();
+  updateOrderPanel();
+  renderProductTable(); // ボタンを「変更」に
+  showToast('✅ ' + p.name + ' をカートに追加しました', 'success');
+}
+
+function changeOrderQty(code, delta, directVal) {
+  if (!orderItems[code]) return;
+  const v = delta !== 0
+    ? Math.max(1, orderItems[code].qty + delta)
+    : Math.max(1, parseInt(directVal) || 1);
+  orderItems[code].qty = v;
+  persistCart();
+  updateOrderPanel();
+  const ti = document.getElementById('qty-' + code);
+  if (ti) ti.value = v;
+}
+
+function removeFromOrder(code) {
+  delete orderItems[code];
+  persistCart();
+  updateOrderPanel();
+  renderProductTable();
+}
+
+function clearOrder() {
+  orderItems = {};
+  clearCart();
+  updateOrderPanel();
+  renderProductTable();
+}
+
+// ============================================================
+//  注文パネル更新
+// ============================================================
+function updateOrderPanel() {
+  const items     = Object.values(orderItems);
+  const listEl    = document.getElementById('order-list');
+  const badgeEl   = document.getElementById('order-badge');
+  const totalEl   = document.getElementById('order-total');
+  const submitBtn = document.getElementById('submit-btn');
+
+  if (!items.length) {
+    listEl.innerHTML = `<div class="order-empty"><div class="order-empty-icon">🛒</div>商品を選択して<br>注文リストに追加してください</div>`;
+    badgeEl.style.display = 'none';
+    totalEl.style.display = 'none';
+    submitBtn.disabled = true;
+    return;
+  }
+
+  const totalPrice = items.reduce((s, i) => s + (Number(i.product.price) || 0) * i.qty, 0);
+
+  listEl.innerHTML = items.map(i => `
+    <div class="order-item">
+      <div class="order-item-name">${esc(i.product.name)}</div>
+      <div class="order-item-spec">${esc(i.product.model||'')}${i.product.spec?' / '+esc(i.product.spec):''}</div>
+      <div class="order-item-row">
+        <div class="order-qty-wrap">
+          <button class="order-qty-btn" onclick="changeOrderQty('${esc(i.product.code)}',-1)">−</button>
+          <input class="order-qty-input" type="number" min="1" value="${i.qty}"
+            onchange="changeOrderQty('${esc(i.product.code)}',0,this.value)"
+            oninput="this.value=this.value.replace(/[^0-9]/g,'')">
+          <button class="order-qty-btn" onclick="changeOrderQty('${esc(i.product.code)}',1)">＋</button>
+          <span style="font-size:11px;color:var(--text-muted);margin-left:2px">${esc(i.product.unit||'')}</span>
+        </div>
+        <div class="order-item-price">${i.product.price?'¥'+(Number(i.product.price)*i.qty).toLocaleString():''}</div>
+        <button class="order-item-del" onclick="removeFromOrder('${esc(i.product.code)}')">✕</button>
+      </div>
+    </div>`).join('');
+
+  badgeEl.textContent = items.length;
+  badgeEl.style.display = 'inline';
+  totalEl.style.display = 'flex';
+  document.getElementById('total-price').textContent = '¥' + totalPrice.toLocaleString();
+  submitBtn.disabled = false;
+}
+
+// ============================================================
+//  注文確認モーダル
+// ============================================================
+function openConfirm() {
+  const items = Object.values(orderItems);
+  if (!items.length) return;
+  const totalPrice = items.reduce((s, i) => s + (Number(i.product.price) || 0) * i.qty, 0);
+  const note = document.getElementById('order-note').value.trim();
+
+  const confirmItems = document.getElementById('confirm-items');
+  confirmItems.innerHTML = items.map(i => `
+    <div class="modal-item">
+      <div>
+        <div class="modal-item-name">${esc(i.product.name)}</div>
+        <div class="modal-item-detail">${esc(i.product.vendor||'')}${i.product.spec?' / '+esc(i.product.spec):''}</div>
+      </div>
+      <div class="modal-item-qty">${i.qty} ${esc(i.product.unit||'')}</div>
+    </div>`).join('') +
+    `<div class="modal-total">
+      <span>合計金額（参考）</span>
+      <span class="modal-total-price">¥${totalPrice.toLocaleString()}</span>
+    </div>` +
+    (note ? `<div class="modal-note">📝 備考：${esc(note)}</div>` : '');
+
+  document.getElementById('confirm-modal').style.display = 'flex';
+}
+
+function closeConfirm() {
+  document.getElementById('confirm-modal').style.display = 'none';
+}
+
+// ============================================================
+//  注文送信（分割JSONP方式・URL長制限対応）
+//
+//  カートを CHUNK_SIZE 件ずつ分割し、submitOrderChunk を
+//  順番に呼ぶことでURL長を抑制する。
+//  最初のチャンクで注文IDを発行・通知メールを送信し、
+//  2チャンク目以降はそのIDに追記する。
+// ============================================================
+const CHUNK_SIZE = 5; // 1リクエストあたりの最大品目数
+
+async function submitOrder() {
+  const btn = document.getElementById('confirm-btn');
+  btn.disabled = true; btn.textContent = '送信中...';
+
+  try {
+    const cart = Object.values(orderItems).map(i => ({
+      code:   i.product.code,
+      name:   i.product.name,
+      model:  i.product.model  || '',
+      spec:   i.product.spec   || '',
+      unit:   i.product.unit   || '',
+      qty:    i.qty,
+      price:  i.product.price  || 0,
+      vendor: i.product.vendor || '',
+      link1:  i.product.link1  || '',
+      note:   '',
+    }));
+    const note = document.getElementById('order-note').value.trim();
+
+    // カートをチャンクに分割
+    const chunks = [];
+    for (let i = 0; i < cart.length; i += CHUNK_SIZE) {
+      chunks.push(cart.slice(i, i + CHUNK_SIZE));
+    }
+
+    let orderId = '';
+
+    for (let i = 0; i < chunks.length; i++) {
+      const isFirst = i === 0;
+      const isLast  = i === chunks.length - 1;
+
+      const res = await gasGet({
+        action:   'submitOrderChunk',
+        token:    deptInfo.token,
+        orderId:  orderId,          // 最初は空→GAS側で発行
+        items:    JSON.stringify(chunks[i]),
+        note:     isFirst ? note : '',
+        isFirst:  String(isFirst),
+        isLast:   String(isLast),
+      });
+
+      if (!res.ok) throw new Error(res.error || 'チャンク送信失敗（' + (i+1) + '/' + chunks.length + '）');
+
+      // 最初のチャンクで発行された注文IDを以降のチャンクに引き継ぐ
+      if (isFirst) orderId = res.data.orderId;
+
+      // 進捗をボタンに表示
+      if (chunks.length > 1) {
+        btn.textContent = `送信中... (${i+1}/${chunks.length})`;
+      }
+    }
+
+    closeConfirm();
+    clearCart();
+    orderItems = {};
+
+    document.getElementById('complete-order-id').textContent = orderId;
+    (function() {
+      const reqUrl = withSession('product-request.html', { orderId });
+      const linkEl = document.getElementById('complete-request-link');
+      linkEl.href = reqUrl;
+      linkEl.onclick = function(e) { e.preventDefault(); openRequestWindow(reqUrl); };
+    })();
+    document.getElementById('complete-modal').style.display = 'flex';
+
+  } catch(e) {
+    closeConfirm();
+    showToast('❌ 送信に失敗しました: ' + e.message, 'error');
+    console.error(e);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '✅ この内容で送信する';
+  }
+}
+
+function resetForm() {
+  document.getElementById('order-note').value = '';
+  document.getElementById('complete-modal').style.display = 'none';
+  updateOrderPanel();
+  renderProductTable();
+}
+
+// ============================================================
+//  ユーティリティ
+// ============================================================
+// 商品リンクを別ウィンドウ（ポップアップ）として開く。
+// target="_blank" の通常タブと異なり、画面の半分程度のサイズで
+// 開くため、注文画面を見ながら発注サイトを操作できる。
+function openInNewWindow(url) {
+  const w = Math.round(screen.availWidth  * 0.55);
+  const h = Math.round(screen.availHeight * 0.85);
+  const left = screen.availWidth - w;
+  const top  = 20;
+  window.open(
+    url,
+    '_blank',
+    `noopener,noreferrer,width=${w},height=${h},left=${left},top=${top},resizable=yes,scrollbars=yes`
+  );
+  return false;
+}
+
+function showError(msg) {
+  const el = document.getElementById('error-msg');
+  el.innerHTML = msg; el.style.display = 'block';
+  document.getElementById('product-table-wrap').innerHTML = '';
+}
+
+function showToast(msg, type = '', duration = 3500) {
+  const wrap = document.getElementById('toast-wrap');
+  const el   = document.createElement('div');
+  el.className = `toast ${type}`; el.textContent = msg;
+  wrap.appendChild(el);
+  setTimeout(() => el.remove(), duration);
+}
+
+function esc(str) {
+  return String(str ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+</script>
+</body>
+</html>
