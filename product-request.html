@@ -1,0 +1,392 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>商品登録依頼 | 物品管理システム</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;500;700&family=DM+Sans:wght@400;500;600&display=swap');
+:root{
+  --primary:#0d7a6b; --primary-lt:#e6f4f2; --primary-dk:#095c51;
+  --accent:#f0a500; --danger:#e03e3e;
+  --bg:#f5f7fa; --card:#fff; --border:#dde3eb;
+  --text:#1a2233; --muted:#6b7a93;
+  --shadow:0 2px 12px rgba(0,0,0,.07); --radius:10px;
+}
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Noto Sans JP',sans-serif;background:var(--bg);color:var(--text);min-height:100vh}
+
+/* ---- ヘッダー ---- */
+.header{background:var(--primary);color:#fff;padding:0 24px;height:56px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:100;box-shadow:0 2px 8px rgba(0,0,0,.2)}
+.header-title{font-family:'DM Sans',sans-serif;font-size:17px;font-weight:600}
+.header-right{display:flex;align-items:center;gap:12px;font-size:13px}
+.header-right span{background:rgba(255,255,255,.2);border-radius:20px;padding:2px 12px;font-weight:500}
+.header-right a{color:rgba(255,255,255,.75);font-size:12px;text-decoration:none}
+.header-right a:hover{color:#fff}
+
+/* ---- レイアウト ---- */
+.page{max-width:860px;margin:0 auto;padding:28px 16px 80px;display:flex;flex-direction:column;gap:20px}
+
+/* ---- カード ---- */
+.card{background:var(--card);border-radius:var(--radius);box-shadow:var(--shadow);border:1px solid var(--border)}
+.card-header{padding:14px 20px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between}
+.card-title{font-size:14px;font-weight:700;color:var(--primary);display:flex;align-items:center;gap:8px}
+.card-title::before{content:'';display:inline-block;width:4px;height:16px;background:var(--primary);border-radius:2px}
+.card-body{padding:24px}
+
+/* ---- 受付IDバナー ---- */
+.receipt-banner{
+  background:linear-gradient(135deg,var(--primary-lt),#f0fdf9);
+  border:1.5px solid rgba(13,122,107,.25);
+  border-radius:var(--radius);padding:18px 22px;
+  display:none;align-items:center;justify-content:space-between;gap:12px;
+  animation:slideDown .3s ease;
+}
+.receipt-banner.show{display:flex}
+@keyframes slideDown{from{opacity:0;transform:translateY(-10px)}to{opacity:1;transform:translateY(0)}}
+.receipt-banner-left{}
+.receipt-banner-label{font-size:12px;font-weight:700;color:var(--primary);margin-bottom:4px}
+.receipt-banner-id{font-family:'DM Sans',sans-serif;font-size:22px;font-weight:700;color:var(--primary);letter-spacing:1px}
+.receipt-banner-sub{font-size:12px;color:var(--muted);margin-top:3px}
+.receipt-banner-close{background:none;border:none;cursor:pointer;color:var(--muted);font-size:20px;line-height:1;padding:4px;flex-shrink:0}
+.receipt-banner-close:hover{color:var(--primary)}
+
+/* ---- フォーム ---- */
+.form-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+@media(max-width:600px){.form-grid{grid-template-columns:1fr}}
+.form-group{display:flex;flex-direction:column;gap:5px}
+.form-group.full{grid-column:1/-1}
+.flabel{font-size:12px;font-weight:700;color:var(--muted)}
+.req{color:var(--danger);margin-left:2px}
+.form-control{
+  padding:10px 14px;border:1.5px solid var(--border);border-radius:8px;
+  font-size:14px;font-family:inherit;color:var(--text);background:#fff;
+  transition:border-color .2s,box-shadow .2s;
+}
+.form-control:focus{outline:none;border-color:var(--primary);box-shadow:0 0 0 3px var(--primary-lt)}
+.form-control::placeholder{color:#b0bbc8}
+textarea.form-control{resize:vertical;min-height:80px}
+
+/* URLプレビュー */
+.url-preview{
+  margin-top:8px;background:var(--bg);border:1px solid var(--border);
+  border-radius:8px;padding:10px 14px;display:none;
+  align-items:center;gap:10px;
+}
+.url-preview.show{display:flex}
+.url-preview-icon{font-size:18px;flex-shrink:0}
+.url-preview-text{flex:1;min-width:0}
+.url-preview-link{color:var(--primary);text-decoration:none;font-size:13px;font-weight:600;display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.url-preview-link:hover{text-decoration:underline}
+.url-preview-domain{font-size:11px;color:var(--muted);margin-top:2px}
+
+/* ---- ボタン ---- */
+.btn-row{display:flex;gap:10px;margin-top:20px}
+.btn-submit{
+  padding:12px 28px;background:var(--primary);color:#fff;border:none;
+  border-radius:8px;font-size:14px;font-weight:700;cursor:pointer;
+  font-family:inherit;transition:background .15s,transform .1s;
+  display:flex;align-items:center;gap:8px;
+}
+.btn-submit:hover{background:var(--primary-dk)}
+.btn-submit:active{transform:scale(.98)}
+.btn-submit:disabled{background:var(--border);cursor:not-allowed;transform:none}
+.btn-reset{
+  padding:12px 20px;background:var(--card);border:1.5px solid var(--border);
+  border-radius:8px;font-size:14px;cursor:pointer;font-family:inherit;
+  color:var(--muted);font-weight:600;transition:background .15s;
+}
+.btn-reset:hover{background:var(--bg)}
+
+/* ---- 依頼履歴テーブル ---- */
+.tbl-wrap{overflow-x:auto;border-radius:8px;border:1px solid var(--border)}
+table{width:100%;border-collapse:collapse;font-size:13px}
+thead{background:var(--bg)}
+th{padding:10px 14px;text-align:left;font-size:12px;font-weight:700;color:var(--muted);border-bottom:1px solid var(--border);white-space:nowrap}
+td{padding:10px 14px;border-bottom:1px solid #f0f3f8;vertical-align:top}
+tr:last-child td{border-bottom:none}
+tr:hover td{background:#f8fafc}
+.badge{display:inline-block;font-size:11px;font-weight:700;border-radius:20px;padding:2px 10px}
+.badge-pending{background:#fff3cd;color:#856404}
+.badge-approved{background:var(--primary-lt);color:var(--primary-dk)}
+.badge-rejected{background:#fce8e8;color:var(--danger)}
+.td-link a{color:var(--primary);font-size:11px;text-decoration:none;background:var(--primary-lt);padding:2px 7px;border-radius:4px}
+.td-link a:hover{background:var(--primary);color:#fff}
+
+/* ---- ローディング・空 ---- */
+.spinner-inline{display:inline-block;width:14px;height:14px;border:2px solid var(--border);border-top-color:var(--primary);border-radius:50%;animation:spin .7s linear infinite;vertical-align:middle;margin-right:6px}
+@keyframes spin{to{transform:rotate(360deg)}}
+.empty-cell{text-align:center;color:var(--muted);padding:32px!important}
+
+/* ---- トースト ---- */
+.toast-wrap{position:fixed;bottom:24px;right:24px;z-index:999;display:flex;flex-direction:column;gap:8px}
+.toast{background:var(--text);color:#fff;border-radius:8px;padding:12px 18px;font-size:13px;box-shadow:0 4px 16px rgba(0,0,0,.2);animation:toastIn .25s ease;min-width:240px}
+.toast.success{background:var(--primary)}.toast.error{background:var(--danger)}
+@keyframes toastIn{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:translateY(0)}}
+</style>
+</head>
+<body>
+
+<!-- ヘッダー -->
+<header class="header">
+  <div class="header-title">📝 商品登録依頼</div>
+  <div class="header-right">
+    <span id="dept-name-header">読み込み中...</span>
+    <a href="portal.html">← ポータルへ</a>
+  </div>
+</header>
+
+<div class="page">
+
+  <!-- 受付IDバナー -->
+  <div class="receipt-banner" id="receipt-banner">
+    <div class="receipt-banner-left">
+      <div class="receipt-banner-label">✅ 依頼を受け付けました</div>
+      <div class="receipt-banner-id" id="receipt-id-display">—</div>
+      <div class="receipt-banner-sub">受付IDをお控えください。総務課から審査結果をご連絡します。</div>
+    </div>
+    <button class="receipt-banner-close" onclick="document.getElementById('receipt-banner').classList.remove('show')">×</button>
+  </div>
+
+  <!-- 依頼フォーム -->
+  <div class="card">
+    <div class="card-header">
+      <div class="card-title">登録依頼フォーム</div>
+    </div>
+    <div class="card-body">
+      <div class="form-grid">
+        <div class="form-group">
+          <label class="flabel">商品名<span class="req">*</span></label>
+          <input class="form-control" type="text" id="f-name" placeholder="例：アルコール綿球 100個入">
+        </div>
+        <div class="form-group">
+          <label class="flabel">型番・規格</label>
+          <input class="form-control" type="text" id="f-model" placeholder="例：ALC-100 / 50ml">
+        </div>
+        <div class="form-group full">
+          <label class="flabel">商品URL（参考リンク）</label>
+          <input class="form-control" type="url" id="f-url" placeholder="https://..." oninput="updateUrlPreview()">
+          <div class="url-preview" id="url-preview">
+            <span class="url-preview-icon">🔗</span>
+            <div class="url-preview-text">
+              <a class="url-preview-link" id="url-preview-link" href="#" onclick="return openInNewWindow(this.href)" rel="noopener">—</a>
+              <div class="url-preview-domain" id="url-preview-domain"></div>
+            </div>
+          </div>
+        </div>
+        <div class="form-group full">
+          <label class="flabel">関連する注文ID（任意）</label>
+          <input class="form-control" type="text" id="f-order-id" placeholder="例：ORD20260703-0001">
+          <div style="font-size:11px;color:var(--muted);margin-top:4px">
+            この商品を含めて同時に注文も送信した場合、その注文IDを入力してください（注文完了画面に表示されます）。
+            承認後、新しい注文を作らずこの注文へ商品を追加できるようになります。
+          </div>
+        </div>
+        <div class="form-group full">
+          <label class="flabel">備考・依頼理由</label>
+          <textarea class="form-control" id="f-note" placeholder="使用目的・購入希望理由・参考価格など"></textarea>
+        </div>
+      </div>
+      <div class="btn-row">
+        <button class="btn-submit" id="submit-btn" onclick="submitRequest()">
+          📤 依頼を送信する
+        </button>
+        <button class="btn-reset" onclick="resetForm()">リセット</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 依頼履歴 -->
+  <div class="card">
+    <div class="card-header">
+      <div class="card-title">依頼履歴</div>
+      <button onclick="loadHistory()" style="font-size:12px;color:var(--muted);background:none;border:none;cursor:pointer;font-family:inherit">🔄 更新</button>
+    </div>
+    <div class="tbl-wrap">
+      <table>
+        <thead>
+          <tr><th>受付ID</th><th>受付日</th><th>商品名</th><th>型番</th><th>URL</th><th>ステータス</th><th>コメント</th></tr>
+        </thead>
+        <tbody id="history-tbody">
+          <tr><td colspan="7" class="empty-cell"><span class="spinner-inline"></span>読み込み中...</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+</div>
+
+<div class="toast-wrap" id="toast-wrap"></div>
+
+<script>
+// ============================================================
+//  設定 ★要変更
+// ============================================================
+const GAS_URL = 'https://script.google.com/macros/s/AKfycbzoRS-BS7B8ed2I9fOykpogsPhNvkmCDLnb5p4_VWjBC7qhTx0WMdzNhX6WXucVEA5j/exec';
+
+// ============================================================
+//  JSONP通信（GitHub Pages → GAS CORS回避）
+// ============================================================
+function gasGet(params) {
+  return new Promise((resolve, reject) => {
+    const cbName = '_gasCallback_' + Date.now() + '_' + Math.floor(Math.random() * 10000);
+    const qs = Object.entries({ ...params, callback: cbName })
+      .map(([k, v]) => encodeURIComponent(k) + '=' + encodeURIComponent(v ?? ''))
+      .join('&');
+    const script = document.createElement('script');
+    const timer  = setTimeout(() => { cleanup(); reject(new Error('タイムアウト')); }, 20000);
+    function cleanup() { clearTimeout(timer); delete window[cbName]; if (script.parentNode) script.parentNode.removeChild(script); }
+    window[cbName] = (data) => { cleanup(); resolve(data); };
+    script.src    = GAS_URL + '?' + qs;
+    script.onerror= () => { cleanup(); reject(new Error('接続エラー')); };
+    document.head.appendChild(script);
+  });
+}
+
+// ============================================================
+//  セッション
+// ============================================================
+function getSession() { try { return JSON.parse(sessionStorage.getItem('hms_session') || 'null'); } catch { return null; } }
+const session = getSession();
+if (!session) {
+  alert('ログインが必要です。');
+  location.href = 'portal.html';
+}
+document.getElementById('dept-name-header').textContent = session ? session.deptName : '—';
+
+// ============================================================
+//  物品請求伝票（order-form.html）から遷移してきた場合、
+//  注文IDをURLパラメータから受け取ってフォームへ自動入力する
+//  例：product-request.html?orderId=ORD20260703-0001
+// ============================================================
+(function prefillOrderIdFromUrl() {
+  const urlOrderId = new URLSearchParams(location.search).get('orderId');
+  if (urlOrderId) {
+    document.getElementById('f-order-id').value = urlOrderId;
+    // 分かりやすいよう入力欄まで軽くスクロール＋ハイライト
+    const el = document.getElementById('f-order-id');
+    el.style.background = 'var(--primary-lt)';
+    setTimeout(() => { el.style.background = ''; }, 2000);
+  }
+})();
+
+// ============================================================
+//  URLプレビュー
+// ============================================================
+function updateUrlPreview() {
+  const url     = document.getElementById('f-url').value.trim();
+  const preview = document.getElementById('url-preview');
+  if (!url || !url.startsWith('http')) { preview.classList.remove('show'); return; }
+  try {
+    const u = new URL(url);
+    document.getElementById('url-preview-link').href        = url;
+    document.getElementById('url-preview-link').textContent = url.length > 60 ? url.slice(0, 60) + '…' : url;
+    document.getElementById('url-preview-domain').textContent = u.hostname;
+    preview.classList.add('show');
+  } catch { preview.classList.remove('show'); }
+}
+
+// ============================================================
+//  依頼送信
+// ============================================================
+async function submitRequest() {
+  const name    = document.getElementById('f-name').value.trim();
+  const model   = document.getElementById('f-model').value.trim();
+  const url     = document.getElementById('f-url').value.trim();
+  const note    = document.getElementById('f-note').value.trim();
+  const orderId = document.getElementById('f-order-id').value.trim();
+
+  if (!name) { showToast('商品名を入力してください', 'error'); return; }
+
+  const btn = document.getElementById('submit-btn');
+  btn.disabled = true; btn.textContent = '送信中...';
+
+  try {
+    const res = await gasGet({ action: 'submitProductRequest', token: session.token, name, model, url, note, orderId });
+    if (!res.ok) throw new Error(res.error);
+
+    document.getElementById('receipt-id-display').textContent = res.data.reqId;
+    document.getElementById('receipt-banner').classList.add('show');
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+    showToast('依頼を送信しました（' + res.data.reqId + '）', 'success');
+    resetForm();
+    loadHistory();
+  } catch(e) {
+    showToast('送信に失敗しました: ' + e.message, 'error');
+  } finally {
+    btn.disabled = false; btn.textContent = '📤 依頼を送信する';
+  }
+}
+
+function resetForm() {
+  ['f-name','f-model','f-url','f-note','f-order-id'].forEach(id => document.getElementById(id).value = '');
+  document.getElementById('url-preview').classList.remove('show');
+}
+
+// ============================================================
+//  依頼履歴
+// ============================================================
+async function loadHistory() {
+  const tbody = document.getElementById('history-tbody');
+  tbody.innerHTML = '<tr><td colspan="7" class="empty-cell"><span class="spinner-inline"></span>読み込み中...</td></tr>';
+  try {
+    const res = await gasGet({ action: 'getMyProductRequests', token: session.token });
+    if (!res.ok) throw new Error(res.error);
+    const list = res.data || [];
+    if (!list.length) {
+      tbody.innerHTML = '<tr><td colspan="7" class="empty-cell">依頼履歴がありません</td></tr>';
+      return;
+    }
+    const stCls = { '受付中':'badge-pending', '承認':'badge-approved', '却下':'badge-rejected' };
+    // 受付日時が新しい順に表示
+    const sorted = list.slice().sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt)));
+    tbody.innerHTML = sorted.map(r => `
+      <tr>
+        <td style="font-family:monospace;font-size:11px;color:var(--muted)">${esc(r.reqId)}</td>
+        <td style="font-size:12px;color:var(--muted);white-space:nowrap">${esc((r.createdAt||'').slice(0,10))}</td>
+        <td style="font-weight:600">${esc(r.name)}</td>
+        <td style="font-size:12px;color:var(--muted)">${esc(r.model||'—')}${r.orderId ? `<br><span style="font-size:10px">🔗${esc(r.orderId)}</span>` : ''}</td>
+        <td class="td-link">${r.url ? `<a href="${esc(r.url)}" onclick="return openInNewWindow(this.href)" rel="noopener">🔗 開く</a>` : '—'}</td>
+        <td><span class="badge ${stCls[r.status]||'badge-pending'}">${esc(r.status)}</span></td>
+        <td style="font-size:12px;color:var(--muted)">${esc(r.adminNote||'—')}</td>
+      </tr>`).join('');
+  } catch(e) {
+    tbody.innerHTML = '<tr><td colspan="7" class="empty-cell" style="color:var(--danger)">読み込みに失敗しました</td></tr>';
+  }
+}
+
+// ============================================================
+//  ユーティリティ
+// ============================================================
+// リンクを別ウィンドウ（ポップアップ）として開く
+function openInNewWindow(url) {
+  const w = Math.round(screen.availWidth  * 0.55);
+  const h = Math.round(screen.availHeight * 0.85);
+  const left = screen.availWidth - w;
+  const top  = 20;
+  window.open(
+    url,
+    '_blank',
+    `noopener,noreferrer,width=${w},height=${h},left=${left},top=${top},resizable=yes,scrollbars=yes`
+  );
+  return false;
+}
+
+function showToast(msg, type = '') {
+  const wrap = document.getElementById('toast-wrap');
+  const el   = document.createElement('div');
+  el.className = `toast ${type}`; el.textContent = msg;
+  wrap.appendChild(el);
+  setTimeout(() => el.remove(), 3500);
+}
+function esc(s) {
+  return String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+// ============================================================
+//  初期化
+// ============================================================
+window.addEventListener('DOMContentLoaded', loadHistory);
+</script>
+</body>
+</html>
