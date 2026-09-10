@@ -516,7 +516,17 @@ function renderSlip(order) {
       </div>
       <div class="slip-head-right">
         <div>部署：<strong>${esc(order.deptName)}</strong></div>
-        <div>注文日時：${esc((order.orderedAt||'').slice(0,16))}</div>
+        <div>初回送信日時：${esc((order.orderedAt||'').slice(0,16))}${
+          (() => {
+            // ★追加：今週の既存注文へ集約する仕様により、1つの注文IDに
+            // 送信タイミングの異なる品目が混在することがあるため、
+            // 何回に分けて送信されたかをヘッダーでもひと目で分かるようにする。
+            const sentTimes = new Set((order.items || []).map(i => i.orderedAt));
+            return sentTimes.size > 1
+              ? ` <span style="font-size:11px;background:#fff3cd;color:#856404;padding:2px 8px;border-radius:10px;margin-left:4px">${sentTimes.size}回に分けて送信</span>`
+              : '';
+          })()
+        }</div>
         <div><span class="slip-status-badge ${stCls(order.status)}">${esc(order.status)}</span></div>
       </div>
     </div>
@@ -542,7 +552,9 @@ function renderSlip(order) {
       <table class="slip-table">
         <thead>
           <tr>
-            <th>#</th><th>品名</th><th>型番</th><th>規格</th><th>単位</th>
+            <th>#</th>
+            <th>送信日時</th>
+            <th>品名</th><th>型番</th><th>規格</th><th>単位</th>
             <th style="text-align:right">数量</th><th style="text-align:right">単価</th>
             <th style="text-align:right">小計</th><th>注文先</th><th>リンク</th><th>ステータス</th>
             <th style="min-width:140px">処理メモ</th><th style="min-width:110px">操作</th>
@@ -557,6 +569,12 @@ function renderSlip(order) {
             return `
             <tr>
               <td style="color:var(--muted);text-align:center">${i + 1}</td>
+              <td style="font-size:12px;color:var(--muted);white-space:nowrap">
+                ${esc(formatItemSentAt(item.orderedAt))}
+                ${item.orderedAt !== order.orderedAt
+                  ? `<span title="この注文の最初の送信（${esc((order.orderedAt||'').slice(0,16))}）より後に、同じ注文IDへ追加送信された品目です" style="display:inline-block;font-size:10px;background:#fff3cd;color:#856404;padding:1px 6px;border-radius:10px;margin-top:2px">追加送信</span>`
+                  : ''}
+              </td>
               <td><strong>${esc(item.name)}</strong>${changedBadge}</td>
               <td style="font-size:12px;color:var(--muted)">${esc(item.model||'—')}</td>
               <td style="font-size:12px;color:var(--muted)">${esc(item.spec||'—')}</td>
@@ -598,7 +616,7 @@ function renderSlip(order) {
         </tbody>
         <tfoot>
           <tr>
-            <td colspan="7" style="text-align:right;font-size:13px">合計金額（参考・税込）</td>
+            <td colspan="8" style="text-align:right;font-size:13px">合計金額（参考・税込）</td>
             <td style="text-align:right;font-size:16px;color:var(--primary)">¥${total.toLocaleString()}</td>
             <td colspan="5"></td>
           </tr>
@@ -1060,6 +1078,13 @@ function showToast(msg, type = '', duration = 3500) {
 }
 function esc(s) {
   return String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+// 品目の送信日時（"YYYY-MM-DD HH:MM:SS"）を "MM/DD HH:MM" 表示用に整形する
+function formatItemSentAt(orderedAt) {
+  const s = String(orderedAt || '');
+  const m = s.match(/^(\d{4})-(\d{2})-(\d{2}) (\d{2}):(\d{2})/);
+  if (!m) return s.slice(0, 16) || '—';
+  return `${m[2]}/${m[3]} ${m[4]}:${m[5]}`;
 }
 </script>
 </body>
