@@ -720,7 +720,7 @@ select.form-control{appearance:none;background-image:url("data:image/svg+xml,%3C
       <input type="hidden" id="pm-prefill-dept">
       <input type="hidden" id="pm-prefill-orderid">
  <div class="form-group"><label class="flabel">種別<span class="req">*</span></label>
-        <select class="form-control" id="pm-category"><option value="">選択...</option><option>文房具</option><option>テープ/梱包素材</option><option>電池</option><option>トナー・インク</option><option>用紙</option><option>メディア</option><option>PC製品</option><option>封筒</option><option>印刷物</option><option>袋・包装資材</option><option>生活雑貨</option><option>保育</option><option>薬局</option><option>栄養</option><option>リハビリ</option><option>医療安全</option><option>診察外来</option><option>中材</option><option>脳ドック</option><option>人事経理</option><option>医事外来</option><option>医事入院</option><option>高気圧酸素</option><option>BEEFUP</option><option>メディックス</option><option>管理室</option><option>その他</option></select></div>
+        <select class="form-control" id="pm-category"><option value="">選択...</option><option>文房具</option><option>テープ/梱包素材</option><option>電池</option><option>トナー・インク</option><option>用紙</option><option>メディア</option><option>PC製品</option><option>封筒</option><option>印刷物</option><option>袋・包装資材</option><option>生活雑貨</option><option>保育</option><option>薬局</option><option>栄養</option><option>リハビリ</option><option>医療安全</option><option>診察外来</option><option>中材</option><option>脳ドック</option><option>人事経理</option><option>医事外来</option><option>医事入院</option><option>高気圧酸素</option><option>BEEFUP</option><option>メディックス</option><option>その他</option></select></div>
 
       <div class="form-group"><label class="flabel">品名<span class="req">*</span></label><input class="form-control" id="pm-name" placeholder="例：アルコール綿球"></div>
       <div class="form-group"><label class="flabel">型番</label><input class="form-control" id="pm-model"></div>
@@ -1067,6 +1067,13 @@ let filteredOrders = [], filteredProducts = [];
 let showPaidOrders = false;
 let calAdminYear = new Date().getFullYear(), calAdminMonth = new Date().getMonth() + 1;
 let allWarehouseStock = [], latestJudgment = null;
+// ★追加：在庫管理タブは、初期表示時の一括取得（loadAdminInitialData）または
+// 直近の個別取得で既にデータを保持している場合、タブを切り替えるたびに
+// サーバーへ再取得しに行かない（保持済みデータをそのまま再描画するだけにする）。
+// 「タブをクリックするたびに毎回通信が発生し表示が遅い」という報告への対応。
+// 実際の値の更新（編集保存後など）は、各保存処理の直後に明示的に再取得しているため、
+// この変更後もデータが古いまま表示され続けることはない。
+let stockLoaded = false;
 
 // ============================================================
 //  初期化
@@ -1090,6 +1097,7 @@ async function loadAdminInitialData() {
     loadRequests(d.requests);
     loadWarehouseStock(d.warehouseStock);   // allProducts に依存するため products の後
     loadJudgmentHistory(d.judgmentHistory);
+    stockLoaded = true;
     return true;
   } catch(e) {
     console.warn('初期データの一括取得に失敗したため、個別に再取得します:', e.message);
@@ -1136,9 +1144,16 @@ function switchTab(name, skipReload) {
   document.getElementById('tab-' + name).classList.add('active');
   // ★修正：skipReload=true の場合、既に一括取得（loadAdminInitialData）済みのタブは
   // 再取得しない。管理者管理・操作ログはそもそも一括取得の対象外のため対象外。
+  // ★修正：以前は「在庫管理」タブをクリックするたびに、既にデータを
+  // 保持していても毎回サーバーへ再取得しに行っていたため、
+  // 「タブを開くたびに表示が遅い」という報告の直接の原因になっていた。
+  // 既に取得済み（stockLoaded）なら再取得せず、保持しているデータを
+  // そのまま再描画するだけにする（実際の値の更新は各保存操作の直後に
+  // 個別に再取得しているため、表示が古いまま固定されることはない）。
   if (name === 'dashboard' && !skipReload) loadDashboard();
   if (name === 'calendar') renderCalAdmin();
-  if (name === 'stock' && !skipReload) { loadWarehouseStock(); loadJudgmentHistory(); }
+  if (name === 'stock' && !stockLoaded) { loadWarehouseStock(); loadJudgmentHistory(); stockLoaded = true; }
+  if (name === 'stock' && stockLoaded)  { renderWarehouseStock(); }
   if (name === 'admins') loadAdmins();
   if (name === 'auditlog') loadAuditLogs();
 }
