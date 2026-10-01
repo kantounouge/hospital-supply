@@ -503,16 +503,22 @@ async function gasGetFetch(params) {
   catch { throw new Error('サーバーの応答を解析できませんでした'); }
 }
 
+// ★修正：以前はJSONPを主方式・fetchを予備としていたが、院内ネットワーク等の
+// プロキシ／セキュリティ機器が<script>タグ経由の通信（JSONP）を妨害・遅延させる
+// 環境では、JSONPが失敗するまで待ってからfetchに切り替わるため、
+// 1回の操作で「JSONPの待ち時間＋fetchの待ち時間」の二重の遅延が発生していた。
+// fetchはJSONPが失敗する環境でも問題なく通信できることを確認済みのため、
+// fetchを主方式に、JSONPを予備（fetchが使えない一部の古いブラウザ・環境向け）に変更した。
 async function gasGet(params) {
   try {
-    return await gasGetJSONP(params);
-  } catch (jsonpErr) {
-    console.warn('JSONP失敗、fetchで再試行します:', jsonpErr.message);
+    return await gasGetFetch(params);
+  } catch (fetchErr) {
+    console.warn('fetch失敗、JSONPで再試行します:', fetchErr.message);
     try {
-      return await gasGetFetch(params);
-    } catch (fetchErr) {
-      console.error('fetchも失敗:', fetchErr.message);
-      throw jsonpErr; // 元のエラー（より分かりやすい文言）を投げる
+      return await gasGetJSONP(params);
+    } catch (jsonpErr) {
+      console.error('JSONPも失敗:', jsonpErr.message);
+      throw fetchErr; // 元のエラー（より分かりやすい文言）を投げる
     }
   }
 }
