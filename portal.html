@@ -508,7 +508,7 @@ async function gasGetFetch(params) {
         finalUrl: res.url.replace(/([?&](password|token)=)[^&]*/g, '$1***'),
         contentType: res.headers.get('content-type'), length: text.length });
     console.warn('[診断] 応答本文の先頭800文字:\n' + text.slice(0, 800));
-    throw new Error('サーバーの応答を解析できませんでした');
+    throw _htmlResponseError();
   }
 }
 
@@ -518,10 +518,40 @@ async function gasGetFetch(params) {
 // 1回の操作で「JSONPの待ち時間＋fetchの待ち時間」の二重の遅延が発生していた。
 // fetchはJSONPが失敗する環境でも問題なく通信できることを確認済みのため、
 // fetchを主方式に、JSONPを予備（fetchが使えない一部の古いブラウザ・環境向け）に変更した。
+// ★第6版追加：fetchがGoogle側のエラーページ（404のHTML）を受け取った場合の処理。
+// ・読み取り系（2回実行しても副作用がない操作）：fetchの再試行とJSONPを同時に走らせ、先に成功した方を採用する
+// ・書き込み系：Google側のエラーページが返った時点でサーバー処理は完了している場合があるため、
+//   JSONPで自動的に再送しない（注文・登録などの二重実行を防ぐ）
+const _SAFE_RETRY_RE = /^(get|search|find|export)[A-Z]|^(login|logout|logSessionEnd)$/;
+function _htmlResponseError() {
+  const e = new Error('サーバーの応答を解析できませんでした');
+  e.htmlResponse = true;
+  return e;
+}
+function _firstSuccess(promises) {
+  return new Promise((resolve, reject) => {
+    let failed = 0, lastErr;
+    promises.forEach(p => p.then(resolve, err => { lastErr = err; if (++failed === promises.length) reject(lastErr); }));
+  });
+}
 async function gasGet(params) {
   try {
     return await gasGetFetch(params);
   } catch (fetchErr) {
+    if (fetchErr.htmlResponse) {
+      if (!_SAFE_RETRY_RE.test(params.action || '')) {
+        console.warn('書き込み系の応答がGoogle側エラーページだったため、自動再送しません:', params.action);
+        throw new Error('サーバーからの応答を受け取れませんでした。処理は完了している場合があります。画面を再読み込みして内容を確認してから、必要な場合のみ再度操作してください。');
+      }
+      console.warn('fetchがGoogle側エラーページを受信。fetchの再試行とJSONPを並行して実行します');
+      try {
+        return await _firstSuccess([gasGetFetch(params), gasGetJSONP(params)]);
+      } catch (retryErr) {
+        console.error('再試行も失敗:', retryErr.message);
+        throw fetchErr;
+      }
+    }
+    // 通信自体の失敗（ネットワークエラー等）：従来どおりJSONPで再試行
     console.warn('fetch失敗、JSONPで再試行します:', fetchErr.message);
     try {
       return await gasGetJSONP(params);
@@ -579,6 +609,12 @@ async function handleLogin(e) {
   try {
     const res = await gasGet({ action: 'login', loginId: id, password: pw });
     if (res.ok) {
+      // ★診断用：サーバー側のログイン処理時間をコンソールへ出し、セッション情報には含めない
+      if (res.data && res.data._perf) {
+        console.log('[診断] ログイン サーバー処理=' + res.data._perf._serverTotalMs + 'ms（認証' + res.data._perf.authenticateMs +
+          'ms・セッション作成' + res.data._perf.createSessionMs + 'ms・操作ログ' + res.data._perf.logActionMs + 'ms）');
+        delete res.data._perf;
+      }
       currentUser = res.data;
       sessionStorage.setItem('hms_session', JSON.stringify(res.data));
       showPortal();

@@ -1007,7 +1007,7 @@ function gasGetJSONP(params) {
       .map(([k, v]) => encodeURIComponent(k) + '=' + encodeURIComponent(v ?? ''))
       .join('&');
     const script = document.createElement('script');
-    const timer = setTimeout(() => { cleanup(); reject(new Error('タイムアウト')); }, 30000);
+    const timer = setTimeout(() => { cleanup(); reject(new Error('タイムアウト')); }, 60000);   // ★30秒→60秒（実測で一括取得の応答が約38秒かかった例があったため）
     function cleanup() { clearTimeout(timer); delete window[cbName]; if (script.parentNode) script.parentNode.removeChild(script); }
     window[cbName] = (data) => { cleanup(); resolve(data); };
     script.src = GAS_URL + '?' + qs;
@@ -1031,7 +1031,7 @@ async function gasGetFetch(params) {
       { action: params.action, status: res.status, redirected: res.redirected,
         finalUrl: res.url, contentType: res.headers.get('content-type'), length: text.length });
     console.warn('[診断] 応答本文の先頭800文字:\n' + text.slice(0, 800));
-    throw new Error('サーバーの応答を解析できませんでした');
+    throw _htmlResponseError();
   }
 }
 
@@ -1041,10 +1041,40 @@ async function gasGetFetch(params) {
 // 1回の操作で「JSONPの待ち時間＋fetchの待ち時間」の二重の遅延が発生していた。
 // fetchはJSONPが失敗する環境でも問題なく通信できることを確認済みのため、
 // fetchを主方式に、JSONPを予備（fetchが使えない一部の古いブラウザ・環境向け）に変更した。
+// ★第6版追加：fetchがGoogle側のエラーページ（404のHTML）を受け取った場合の処理。
+// ・読み取り系（2回実行しても副作用がない操作）：fetchの再試行とJSONPを同時に走らせ、先に成功した方を採用する
+// ・書き込み系：Google側のエラーページが返った時点でサーバー処理は完了している場合があるため、
+//   JSONPで自動的に再送しない（注文・登録などの二重実行を防ぐ）
+const _SAFE_RETRY_RE = /^(get|search|find|export)[A-Z]|^(login|logout|logSessionEnd)$/;
+function _htmlResponseError() {
+  const e = new Error('サーバーの応答を解析できませんでした');
+  e.htmlResponse = true;
+  return e;
+}
+function _firstSuccess(promises) {
+  return new Promise((resolve, reject) => {
+    let failed = 0, lastErr;
+    promises.forEach(p => p.then(resolve, err => { lastErr = err; if (++failed === promises.length) reject(lastErr); }));
+  });
+}
 async function gasGet(params) {
   try {
     return await gasGetFetch(params);
   } catch (fetchErr) {
+    if (fetchErr.htmlResponse) {
+      if (!_SAFE_RETRY_RE.test(params.action || '')) {
+        console.warn('書き込み系の応答がGoogle側エラーページだったため、自動再送しません:', params.action);
+        throw new Error('サーバーからの応答を受け取れませんでした。処理は完了している場合があります。画面を再読み込みして内容を確認してから、必要な場合のみ再度操作してください。');
+      }
+      console.warn('fetchがGoogle側エラーページを受信。fetchの再試行とJSONPを並行して実行します');
+      try {
+        return await _firstSuccess([gasGetFetch(params), gasGetJSONP(params)]);
+      } catch (retryErr) {
+        console.error('再試行も失敗:', retryErr.message);
+        throw fetchErr;
+      }
+    }
+    // 通信自体の失敗（ネットワークエラー等）：従来どおりJSONPで再試行
     console.warn('fetch失敗、JSONPで再試行します:', fetchErr.message);
     try {
       return await gasGetJSONP(params);
@@ -1092,7 +1122,26 @@ let stockLoaded = false;
 // 1回のリクエストにまとめることで、GAS側の実行回数を最大10→1に削減する
 // （個人Googleアカウントでの速度改善対応）。各読み込み関数は引き続き
 // 個別にも呼べるので、タブ操作後の再読み込み・編集後の更新等には影響しない。
+// ★第6版追加：初期表示を「個別取得を並行実行」にするか「一括取得（getAdminInitialData）」にするかの切替。
+// 一括取得はサーバー内で直列に処理されるため所要時間が合算され（実測で最大約38秒）、
+// 1本の失敗で全体が失敗扱いになる。個別取得は並行して進み、最も遅いものの所要時間で済み（実測：8本が約10秒）、
+// 1本が失敗しても他に影響しない。元に戻す場合は true にする。
+const USE_BATCH_INITIAL_LOAD = false;
+
 async function loadAdminInitialData() {
+  if (!USE_BATCH_INITIAL_LOAD) {
+    loadDashboard();
+    loadOrders();
+    // 在庫管理タブは商品マスタ（allProducts）に依存するため、商品マスタの取得完了後に再描画する
+    // （在庫データの方が先に届いた場合の表示漏れを防ぐ）
+    loadProducts().then(() => { if (stockLoaded) renderWarehouseStock(); }).catch(() => {});
+    loadDepts();
+    loadVendors();
+    loadNotices();
+    loadCalendarEvents();
+    loadRequests();
+    return false;   // 在庫管理タブは switchTab 側で個別に取得される
+  }
   try {
     const _t0 = performance.now();   // ★診断用：ブラウザ側の所要時間（サーバー処理時間との差＝通信経路の時間）
     const res = await gasGet({ action: 'getAdminInitialData', token: getToken() });
