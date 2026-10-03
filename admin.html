@@ -1024,7 +1024,15 @@ async function gasGetFetch(params) {
   const res = await fetch(GAS_URL + '?' + qs, { redirect: 'follow' });
   const text = await res.text();
   try { return JSON.parse(text); }
-  catch { throw new Error('サーバーの応答を解析できませんでした'); }
+  catch {
+    // ★診断用：JSON以外（HTML等）が返ってきた場合、その中身をコンソールに出力する
+    // （原因が判明したら削除してよい）
+    console.warn('[診断] fetchの応答がJSONではありません',
+      { action: params.action, status: res.status, redirected: res.redirected,
+        finalUrl: res.url, contentType: res.headers.get('content-type'), length: text.length });
+    console.warn('[診断] 応答本文の先頭800文字:\n' + text.slice(0, 800));
+    throw new Error('サーバーの応答を解析できませんでした');
+  }
 }
 
 // ★修正：以前はJSONPを主方式・fetchを予備としていたが、院内ネットワーク等の
@@ -1086,9 +1094,14 @@ let stockLoaded = false;
 // 個別にも呼べるので、タブ操作後の再読み込み・編集後の更新等には影響しない。
 async function loadAdminInitialData() {
   try {
+    const _t0 = performance.now();   // ★診断用：ブラウザ側の所要時間（サーバー処理時間との差＝通信経路の時間）
     const res = await gasGet({ action: 'getAdminInitialData', token: getToken() });
     if (!res.ok) throw new Error(res.error);
     const d = res.data;
+    if (d && d._perf) {
+      console.log('[診断] 一括取得 ブラウザ側合計=' + Math.round(performance.now() - _t0) + 'ms / サーバー処理=' + d._perf._serverTotalMs + 'ms');
+      console.table(Object.entries(d._perf).filter(([k]) => k[0] !== '_').map(([k, v]) => ({ データ: k, ms: v.ms, 件数: v.count })));
+    }
     loadDashboard(d.dashboard);
     loadOrders(d.orders);
     loadProducts(d.products);       // ★ loadWarehouseStock より先に実行する必要あり
