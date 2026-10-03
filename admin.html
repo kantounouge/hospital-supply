@@ -1068,15 +1068,36 @@ function _htmlResponseError() {
   return e;
 }
 async function gasGet(params) {
+  const tCall = performance.now();
   await _gasAcquire();
+  const tStart = performance.now();
   try { return await _gasGetInner(params); }
-  finally { _gasRelease(); }
+  finally {
+    _gasRelease();
+    const tEnd = performance.now();
+    // ★診断用：4秒以上かかった通信について、順番待ちと通信の内訳を出力する
+    if (tEnd - tCall > 4000) console.log('[診断] ' + params.action + ': 順番待ち' + Math.round(tStart - tCall) + 'ms / 通信' + Math.round(tEnd - tStart) + 'ms');
+  }
 }
+// ★診断用：画面の処理（メインスレッド）が1秒以上止まった場合に記録する
+// （通信の合間の空き時間の原因が、画面側の処理かどうかを切り分けるため）
+(function () {
+  let last = performance.now();
+  setInterval(function () {
+    const now = performance.now(), lag = now - last - 200;
+    if (lag > 1000) console.warn('[診断] 画面処理が約' + Math.round(lag) + 'ms停止していました' + (document.hidden ? '（タブが非表示）' : ''));
+    last = now;
+  }, 200);
+})();
 async function _gasGetInner(params) {
   let fetchErr;
+  const tFirst = performance.now();
   try {
     return await gasGetFetch(params);
-  } catch (e) { fetchErr = e; }
+  } catch (e) {
+    fetchErr = e;
+    console.log('[診断] 1回目のfetchが失敗するまで ' + Math.round(performance.now() - tFirst) + 'ms (' + params.action + ')');
+  }
 
   if (fetchErr.htmlResponse) {
     if (!_SAFE_RETRY_RE.test(params.action || '')) {
@@ -1085,9 +1106,17 @@ async function _gasGetInner(params) {
     }
     for (const delay of _RETRY_DELAYS_MS) {
       console.warn('Google側エラーページを受信。' + delay + 'ms後にfetchを再試行します:', params.action);
+      const tSleep = performance.now();
       await _sleep(delay);
-      try { return await gasGetFetch(params); }
-      catch (e) { if (!e.htmlResponse) { fetchErr = e; break; } }
+      const tRetry = performance.now();
+      try {
+        const r = await gasGetFetch(params);
+        console.log('[診断] 再試行成功：待機 設定' + delay + 'ms→実測' + Math.round(tRetry - tSleep) + 'ms / fetch ' + Math.round(performance.now() - tRetry) + 'ms');
+        return r;
+      } catch (e) {
+        console.log('[診断] 再試行失敗：待機 設定' + delay + 'ms→実測' + Math.round(tRetry - tSleep) + 'ms / fetch ' + Math.round(performance.now() - tRetry) + 'ms');
+        if (!e.htmlResponse) { fetchErr = e; break; }
+      }
     }
   }
   // 最後の手段：JSONP（通信自体の失敗の場合は従来どおりここへ来る）
