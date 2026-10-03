@@ -500,7 +500,16 @@ async function gasGetFetch(params) {
   const res = await fetch(GAS_URL + '?' + qs, { redirect: 'follow' });
   const text = await res.text();
   try { return JSON.parse(text); }
-  catch { throw new Error('サーバーの応答を解析できませんでした'); }
+  catch {
+    // ★診断用：JSON以外（HTML等）が返ってきた場合、その中身をコンソールに出力する
+    // （原因が判明したら削除してよい。パスワード等を含むパラメータは出力しない）
+    console.warn('[診断] fetchの応答がJSONではありません',
+      { action: params.action, status: res.status, redirected: res.redirected,
+        finalUrl: res.url.replace(/([?&](password|token)=)[^&]*/g, '$1***'),
+        contentType: res.headers.get('content-type'), length: text.length });
+    console.warn('[診断] 応答本文の先頭800文字:\n' + text.slice(0, 800));
+    throw new Error('サーバーの応答を解析できませんでした');
+  }
 }
 
 // ★修正：以前はJSONPを主方式・fetchを予備としていたが、院内ネットワーク等の
@@ -621,8 +630,14 @@ function showPortal() {
 // 個人Googleアカウントでの速度改善対応。
 async function loadPortalInitialData() {
   try {
+    const _t0 = performance.now();   // ★診断用
     const res = await gasGet({ action: 'getPortalInitialData', activeOnly: 'true' });
     if (!res.ok) throw new Error(res.error);
+    if (res.data && res.data._perf) {
+      console.log('[診断] ポータル初期データ ブラウザ側合計=' + Math.round(performance.now() - _t0) +
+        'ms / サーバー処理=' + res.data._perf._serverTotalMs + 'ms（お知らせ' + res.data._perf.noticesMs +
+        'ms・カレンダー' + res.data._perf.calendarMs + 'ms）');
+    }
     loadNotices(res.data.notices);
     loadCalendarEvents(res.data.calendar);
   } catch(e) {
