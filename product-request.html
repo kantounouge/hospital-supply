@@ -276,47 +276,62 @@ async function gasGetFetch(params) {
   catch { throw _htmlResponseError(); }
 }
 
-// ★第6版追加：fetchがGoogle側のエラーページ（404のHTML）を受け取った場合の処理。
-// ・読み取り系（2回実行しても副作用がない操作）：fetchの再試行とJSONPを同時に走らせ、先に成功した方を採用する
-// ・書き込み系：Google側のエラーページが返った時点でサーバー処理は完了している場合があるため、
-//   JSONPで自動的に再送しない（注文・登録などの二重実行を防ぐ）
+// ★第6版追加（改訂）：通信の同時実行数の上限と、Google側エラーページ（404のHTML）を受け取った場合の再試行方針。
+// ・同時に送信するリクエストを最大 _GAS_MAX_CONCURRENT 本に制限する（超えた分は順番待ち）。
+//   エラーが多発している状況で大量のリクエストを同時に送ると、さらに失敗・遅延を招くため。
+// ・読み取り系は、間隔を空けて fetch を最大2回再試行し、それでも取得できない場合のみ JSONP を1回試す。
+// ・書き込み系は、Google側エラーページが返った時点でサーバー処理が完了している場合があるため、
+//   JSONPで自動的に再送しない（注文・登録などの二重実行を防ぐ）。
+const _GAS_MAX_CONCURRENT = 4;
+const _RETRY_DELAYS_MS = [1500, 3000];
 const _SAFE_RETRY_RE = /^(get|search|find|export)[A-Z]|^(login|logout|logSessionEnd)$/;
+let _gasInFlight = 0;
+const _gasWaitQueue = [];
+function _gasAcquire() {
+  if (_gasInFlight < _GAS_MAX_CONCURRENT) { _gasInFlight++; return Promise.resolve(); }
+  return new Promise(resolve => _gasWaitQueue.push(resolve));
+}
+function _gasRelease() {
+  const next = _gasWaitQueue.shift();
+  if (next) next();          // 待っていた次のリクエストへ枠を引き継ぐ（_gasInFlight は変えない）
+  else _gasInFlight--;
+}
+function _sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
 function _htmlResponseError() {
   const e = new Error('サーバーの応答を解析できませんでした');
   e.htmlResponse = true;
   return e;
 }
-function _firstSuccess(promises) {
-  return new Promise((resolve, reject) => {
-    let failed = 0, lastErr;
-    promises.forEach(p => p.then(resolve, err => { lastErr = err; if (++failed === promises.length) reject(lastErr); }));
-  });
-}
 async function gasGet(params) {
+  await _gasAcquire();
+  try { return await _gasGetInner(params); }
+  finally { _gasRelease(); }
+}
+async function _gasGetInner(params) {
+  let fetchErr;
   try {
     return await gasGetFetch(params);
-  } catch (fetchErr) {
-    if (fetchErr.htmlResponse) {
-      if (!_SAFE_RETRY_RE.test(params.action || '')) {
-        console.warn('書き込み系の応答がGoogle側エラーページだったため、自動再送しません:', params.action);
-        throw new Error('サーバーからの応答を受け取れませんでした。処理は完了している場合があります。画面を再読み込みして内容を確認してから、必要な場合のみ再度操作してください。');
-      }
-      console.warn('fetchがGoogle側エラーページを受信。fetchの再試行とJSONPを並行して実行します');
-      try {
-        return await _firstSuccess([gasGetFetch(params), gasGetJSONP(params)]);
-      } catch (retryErr) {
-        console.error('再試行も失敗:', retryErr.message);
-        throw fetchErr;
-      }
+  } catch (e) { fetchErr = e; }
+
+  if (fetchErr.htmlResponse) {
+    if (!_SAFE_RETRY_RE.test(params.action || '')) {
+      console.warn('書き込み系の応答がGoogle側エラーページだったため、自動再送しません:', params.action);
+      throw new Error('サーバーからの応答を受け取れませんでした。処理は完了している場合があります。画面を再読み込みして内容を確認してから、必要な場合のみ再度操作してください。');
     }
-    // 通信自体の失敗（ネットワークエラー等）：従来どおりJSONPで再試行
-    console.warn('fetch失敗、JSONPで再試行します:', fetchErr.message);
-    try {
-      return await gasGetJSONP(params);
-    } catch (jsonpErr) {
-      console.error('JSONPも失敗:', jsonpErr.message);
-      throw fetchErr; // 元のエラー（より分かりやすい文言）を投げる
+    for (const delay of _RETRY_DELAYS_MS) {
+      console.warn('Google側エラーページを受信。' + delay + 'ms後にfetchを再試行します:', params.action);
+      await _sleep(delay);
+      try { return await gasGetFetch(params); }
+      catch (e) { if (!e.htmlResponse) { fetchErr = e; break; } }
     }
+  }
+  // 最後の手段：JSONP（通信自体の失敗の場合は従来どおりここへ来る）
+  console.warn('fetch失敗、JSONPで再試行します:', fetchErr.message);
+  try {
+    return await gasGetJSONP(params);
+  } catch (jsonpErr) {
+    console.error('JSONPも失敗:', jsonpErr.message);
+    throw fetchErr; // 元のエラー（より分かりやすい文言）を投げる
   }
 }
 
