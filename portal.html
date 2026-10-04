@@ -519,12 +519,12 @@ async function gasGetFetch(params) {
 // fetchはJSONPが失敗する環境でも問題なく通信できることを確認済みのため、
 // fetchを主方式に、JSONPを予備（fetchが使えない一部の古いブラウザ・環境向け）に変更した。
 // ★第6版追加（改訂）：通信の同時実行数の上限と、Google側エラーページ（404のHTML）を受け取った場合の再試行方針。
-// ・同時に送信するリクエストを最大 _GAS_MAX_CONCURRENT 本に制限する（超えた分は順番待ち）。
+// ・同時に送信するリクエストを最大 _GAS_MAX_CONCURRENT 本（現在6本）に制限する（超えた分は順番待ち）。
 //   エラーが多発している状況で大量のリクエストを同時に送ると、さらに失敗・遅延を招くため。
 // ・読み取り系は、間隔を空けて fetch を最大2回再試行し、それでも取得できない場合のみ JSONP を1回試す。
 // ・書き込み系は、Google側エラーページが返った時点でサーバー処理が完了している場合があるため、
 //   JSONPで自動的に再送しない（注文・登録などの二重実行を防ぐ）。
-const _GAS_MAX_CONCURRENT = 4;
+const _GAS_MAX_CONCURRENT = 6;
 const _RETRY_DELAYS_MS = [1500, 3000];
 const _SAFE_RETRY_RE = /^(get|search|find|export)[A-Z]|^(login|logout|logSessionEnd)$/;
 let _gasInFlight = 0;
@@ -620,6 +620,7 @@ let calEvents = [];
 window.addEventListener('DOMContentLoaded', () => {
   const saved = sessionStorage.getItem('hms_session');
   if (saved) { currentUser = JSON.parse(saved); showPortal(); }
+  else { _startPortalPrefetch(); }
   updateInfoDate();
 });
 
@@ -708,7 +709,42 @@ function showPortal() {
 // ★追加：ログイン後に必要な「お知らせ」「カレンダー」を1回のリクエストに
 // まとめて取得する（従来は2回の別々のスクリプト実行だった）。
 // 個人Googleアカウントでの速度改善対応。
+// ★第6版追加：ポータル初期データを「一括取得」にするか「お知らせ・カレンダーの個別取得」にするかの切替。
+// 個別取得にすると、片方が失敗してももう片方は表示でき、一括取得全体の失敗待ち（実測で約120秒）が起きない。
+// さらに、お知らせ・カレンダーはログイン不要のデータなので、ログイン画面を開いた時点で先読みを始め、
+// ID・パスワードを入力している間に取得を済ませる（ログイン後の待ち時間を短縮）。
+// 一括取得に戻す場合は true にする。
+const USE_BATCH_PORTAL_DATA = false;
+let _portalPrefetch = null;   // { at: 開始時刻, notices: Promise, calendar: Promise }
+
+function _fetchPortalPart(params) {
+  return gasGet(params).then(res => { if (!res.ok) throw new Error(res.error); return res.data; });
+}
+function _startPortalPrefetch() {
+  if (USE_BATCH_PORTAL_DATA) return;
+  const pf = {
+    at: Date.now(),
+    notices:  _fetchPortalPart({ action: 'getNotices', activeOnly: 'true' }),
+    calendar: _fetchPortalPart({ action: 'getCalendar', year: calYear, month: calMonth }),
+  };
+  pf.notices.catch(() => {});    // 失敗しても、ログイン後に通常の取得へ切り替わる
+  pf.calendar.catch(() => {});
+  _portalPrefetch = pf;
+}
+
 async function loadPortalInitialData() {
+  if (!USE_BATCH_PORTAL_DATA) {
+    // 先読みが2分以内のものなら利用し、古い・無い場合は新規に取得する
+    const pf = (_portalPrefetch && Date.now() - _portalPrefetch.at < 120000) ? _portalPrefetch : null;
+    _portalPrefetch = null;
+    console.log('[診断] ポータル初期データ: ' + (pf ? '先読み分を利用' : '新規取得'));
+    const noticesP  = pf ? pf.notices  : _fetchPortalPart({ action: 'getNotices', activeOnly: 'true' });
+    const calendarP = pf ? pf.calendar : _fetchPortalPart({ action: 'getCalendar', year: calYear, month: calMonth });
+    // 届いた順にそれぞれ描画する。失敗した場合は、各ローダーが通常の個別取得をやり直す
+    noticesP.then(d => loadNotices(d),  () => loadNotices());
+    calendarP.then(d => loadCalendarEvents(d), () => loadCalendarEvents());
+    return;
+  }
   try {
     const _t0 = performance.now();   // ★診断用
     const res = await gasGet({ action: 'getPortalInitialData', activeOnly: 'true' });

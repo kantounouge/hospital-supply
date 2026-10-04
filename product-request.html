@@ -277,12 +277,12 @@ async function gasGetFetch(params) {
 }
 
 // ★第6版追加（改訂）：通信の同時実行数の上限と、Google側エラーページ（404のHTML）を受け取った場合の再試行方針。
-// ・同時に送信するリクエストを最大 _GAS_MAX_CONCURRENT 本に制限する（超えた分は順番待ち）。
+// ・同時に送信するリクエストを最大 _GAS_MAX_CONCURRENT 本（現在6本）に制限する（超えた分は順番待ち）。
 //   エラーが多発している状況で大量のリクエストを同時に送ると、さらに失敗・遅延を招くため。
 // ・読み取り系は、間隔を空けて fetch を最大2回再試行し、それでも取得できない場合のみ JSONP を1回試す。
 // ・書き込み系は、Google側エラーページが返った時点でサーバー処理が完了している場合があるため、
 //   JSONPで自動的に再送しない（注文・登録などの二重実行を防ぐ）。
-const _GAS_MAX_CONCURRENT = 4;
+const _GAS_MAX_CONCURRENT = 6;
 const _RETRY_DELAYS_MS = [1500, 3000];
 const _SAFE_RETRY_RE = /^(get|search|find|export)[A-Z]|^(login|logout|logSessionEnd)$/;
 let _gasInFlight = 0;
