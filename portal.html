@@ -497,8 +497,11 @@ async function gasGetFetch(params) {
   const qs = Object.entries(params)
     .map(([k, v]) => encodeURIComponent(k) + '=' + encodeURIComponent(v ?? ''))
     .join('&');
+  const _tf = performance.now();   // ★診断用
   const res = await fetch(GAS_URL + '?' + qs, { redirect: 'follow' });
   const text = await res.text();
+  console.log('[診断][fetch] ' + params.action + ' status=' + res.status + ' redirected=' + res.redirected +
+    ' ' + Math.round(performance.now() - _tf) + 'ms');
   try { return JSON.parse(text); }
   catch {
     // ★診断用：JSON以外（HTML等）が返ってきた場合、その中身をコンソールに出力する
@@ -524,6 +527,19 @@ async function gasGetFetch(params) {
 // ・読み取り系は、間隔を空けて fetch を最大2回再試行し、それでも取得できない場合のみ JSONP を1回試す。
 // ・書き込み系は、Google側エラーページが返った時点でサーバー処理が完了している場合があるため、
 //   JSONPで自動的に再送しない（注文・登録などの二重実行を防ぐ）。
+// ★診断用：ブラウザ自身が記録した通信結果（Resource Timing）をコンソールへ出す。
+// ネットワーク欄に「ブロック」と表示される通信が、実際に完了していたかどうかを確認するため。
+try {
+  new PerformanceObserver(function (list) {
+    list.getEntries().forEach(function (e) {
+      if (e.name.indexOf('/exec?') < 0) return;
+      const m = e.name.match(/[?&]action=([A-Za-z]+)/);
+      console.log('[診断][記録] ' + (m ? m[1] : '?') + ' 開始' + Math.round(e.startTime) + 'ms 所要' + Math.round(e.duration) +
+        'ms status=' + (e.responseStatus !== undefined ? e.responseStatus : 'n/a') + ' 転送=' + e.transferSize +
+        ' protocol=' + (e.nextHopProtocol || '-'));
+    });
+  }).observe({ type: 'resource', buffered: true });
+} catch (e) { console.warn('[診断] PerformanceObserver を使用できません:', e.message); }
 const _GAS_MAX_CONCURRENT = 6;
 const _RETRY_DELAYS_MS = [1500, 3000];
 const _SAFE_RETRY_RE = /^(get|search|find|export)[A-Z]|^(login|logout|logSessionEnd)$/;
@@ -718,7 +734,15 @@ const USE_BATCH_PORTAL_DATA = false;
 let _portalPrefetch = null;   // { at: 開始時刻, notices: Promise, calendar: Promise }
 
 function _fetchPortalPart(params) {
-  return gasGet(params).then(res => { if (!res.ok) throw new Error(res.error); return res.data; });
+  const t0 = performance.now();   // ★診断用：成否と所要時間をコンソールへ出す
+  return gasGet(params).then(res => {
+    console.log('[診断] ' + params.action + ' 取得完了 ' + Math.round(performance.now() - t0) + 'ms (ok=' + res.ok + ')');
+    if (!res.ok) throw new Error(res.error);
+    return res.data;
+  }, err => {
+    console.warn('[診断] ' + params.action + ' 失敗 ' + Math.round(performance.now() - t0) + 'ms: ' + err.message);
+    throw err;
+  });
 }
 function _startPortalPrefetch() {
   if (USE_BATCH_PORTAL_DATA) return;
