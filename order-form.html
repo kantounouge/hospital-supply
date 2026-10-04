@@ -332,12 +332,29 @@ function gasGetJSONP(params) {
   });
 }
 
-async function gasGetFetch(params) {
+async function gasGetFetch(params, timeoutMs) {
   const qs = Object.entries(params)
     .map(([k, v]) => encodeURIComponent(k) + '=' + encodeURIComponent(_stringifyParamValue(v)))
     .join('&');
-  const res  = await fetch(GAS_URL + '?' + qs, { redirect: 'follow' });
-  const text = await res.text();
+  // ★第6版追加：読み取り系は応答待ちに上限を設ける。Googleの結果受け渡し（echo）の段階で
+  // 10〜30秒止まったのち404になる事象が確認されており、早めに打ち切って再試行する方が速いため。
+  const _ctrl = timeoutMs ? new AbortController() : null;
+  const _timer = _ctrl ? setTimeout(() => _ctrl.abort(), timeoutMs) : null;
+  let res, text;
+  try {
+    res = await fetch(GAS_URL + '?' + qs, { redirect: 'follow', signal: _ctrl ? _ctrl.signal : undefined });
+    text = await res.text();
+  } catch (e) {
+    if (_ctrl && _ctrl.signal.aborted) {
+      const te = _htmlResponseError();
+      te.timeout = true;
+      te.message = '応答が' + Math.round(timeoutMs / 1000) + '秒以内に届きませんでした';
+      throw te;
+    }
+    throw e;
+  } finally {
+    if (_timer) clearTimeout(_timer);
+  }
   try { return JSON.parse(text); }
   catch { throw _htmlResponseError(); }
 }
@@ -349,7 +366,8 @@ async function gasGetFetch(params) {
 // ・書き込み系は、Google側エラーページが返った時点でサーバー処理が完了している場合があるため、
 //   JSONPで自動的に再送しない（注文・登録などの二重実行を防ぐ）。
 const _GAS_MAX_CONCURRENT = 6;
-const _RETRY_DELAYS_MS = [1500, 3000];
+const _RETRY_DELAYS_MS = [500, 1500, 3000];
+const _READ_TIMEOUT_MS = 12000;   // 読み取り系1回あたりの応答待ち上限
 const _SAFE_RETRY_RE = /^(get|search|find|export)[A-Z]|^(login|logout|logSessionEnd)$/;
 let _gasInFlight = 0;
 const _gasWaitQueue = [];
@@ -393,8 +411,10 @@ async function gasGet(params) {
 async function _gasGetInner(params) {
   let fetchErr;
   const tFirst = performance.now();
+  const _safe = _SAFE_RETRY_RE.test(params.action || '');
+  const _tmo = _safe ? _READ_TIMEOUT_MS : 0;   // 書き込み系は打ち切らない（処理済みかどうか不明になるため）
   try {
-    return await gasGetFetch(params);
+    return await gasGetFetch(params, _tmo);
   } catch (e) {
     fetchErr = e;
     console.log('[診断] 1回目のfetchが失敗するまで ' + Math.round(performance.now() - tFirst) + 'ms (' + params.action + ')');
@@ -411,7 +431,7 @@ async function _gasGetInner(params) {
       await _sleep(delay);
       const tRetry = performance.now();
       try {
-        const r = await gasGetFetch(params);
+        const r = await gasGetFetch(params, _tmo);
         console.log('[診断] 再試行成功：待機 設定' + delay + 'ms→実測' + Math.round(tRetry - tSleep) + 'ms / fetch ' + Math.round(performance.now() - tRetry) + 'ms');
         return r;
       } catch (e) {
