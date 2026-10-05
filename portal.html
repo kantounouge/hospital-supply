@@ -4,6 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>物品管理システム | ポータル</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E📦%3C/text%3E%3C/svg%3E">
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;500;700&family=DM+Sans:ital,wght@0,300;0,400;0,500;0,600&display=swap');
 :root {
@@ -504,7 +505,16 @@ async function gasGetFetch(params, timeoutMs) {
   const _timer = _ctrl ? setTimeout(() => _ctrl.abort(), timeoutMs) : null;
   let res, text;
   try {
-    res = await fetch(GAS_URL + '?' + qs, { redirect: 'follow', signal: _ctrl ? _ctrl.signal : undefined });
+    const _init = { redirect: 'follow', signal: _ctrl ? _ctrl.signal : undefined };
+    let _url = GAS_URL + '?' + qs;
+    if (_hasSecretParam(params)) {
+      // ★第7版追加：パスワードは本文で送る。text/plain にすると事前確認（プリフライト）なしで送信できる
+      _url = GAS_URL;
+      _init.method = 'POST';
+      _init.headers = { 'Content-Type': 'text/plain;charset=utf-8' };
+      _init.body = JSON.stringify(Object.fromEntries(Object.entries(params).map(([k, v]) => [k, v == null ? '' : String(v)])));
+    }
+    res = await fetch(_url, _init);
     text = await res.text();
   } catch (e) {
     if (_ctrl && _ctrl.signal.aborted) {
@@ -560,6 +570,8 @@ try {
 const _GAS_MAX_CONCURRENT = 6;
 const _RETRY_DELAYS_MS = [500, 1500, 3000];
 const _READ_TIMEOUT_MS = 12000;   // 読み取り系1回あたりの応答待ち上限
+// ★第7版追加：パスワードを含む要求は POST（本文）で送り、URL・JSONP には載せない
+function _hasSecretParam(p) { return Object.prototype.hasOwnProperty.call(p, 'password'); }
 const _SAFE_RETRY_RE = /^(get|search|find|export)[A-Z]|^(login|logout|logSessionEnd)$/;
 let _gasInFlight = 0;
 const _gasWaitQueue = [];
@@ -632,6 +644,8 @@ async function _gasGetInner(params) {
       }
     }
   }
+  // パスワードを含む要求は、URLに載るJSONPへは切り替えない
+  if (_hasSecretParam(params)) throw fetchErr;
   // 最後の手段：JSONP（通信自体の失敗の場合は従来どおりここへ来る）
   console.warn('fetch失敗、JSONPで再試行します:', fetchErr.message);
   try {
