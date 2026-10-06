@@ -500,6 +500,27 @@ select.form-control{appearance:none;background-image:url("data:image/svg+xml,%3C
   </div>
 
 
+  <!-- ★第7版追加：部署別 棚卸し入力状況 -->
+  <div class="card" id="dept-inv-card">
+    <div class="card-header">
+      <div class="card-title">部署別 棚卸し入力状況</div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <button class="btn btn-primary btn-sm" onclick="loadDeptInventoryOverview()">🔄 読み込み・更新</button>
+        <button class="btn btn-outline btn-sm" onclick="exportAllDeptInventory('xlsx')">📊 全部署の入力内容をExcel出力</button>
+        <button class="btn btn-outline btn-sm" onclick="exportAllDeptInventory('csv')">📥 CSV出力</button>
+      </div>
+    </div>
+    <div class="card-body" style="padding:0">
+      <div id="dept-inv-summary" style="padding:10px 16px;font-size:13px;color:var(--muted)">「読み込み・更新」を押すと、各部署の入力状況を表示します。</div>
+      <div class="tbl-wrap">
+        <table>
+          <thead><tr><th>部署</th><th style="min-width:200px">入力状況</th><th>最終入力日時</th><th>状態</th><th>操作</th></tr></thead>
+          <tbody id="dept-inv-tbody"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
   <!-- 判定履歴 -->
   <div class="card">
     <div class="card-header">
@@ -628,6 +649,23 @@ select.form-control{appearance:none;background-image:url("data:image/svg+xml,%3C
     </div>
     <div class="modal-footer">
       <button class="btn-cancel-modal" onclick="closeModal('warehouse-inv-modal')">閉じる</button>
+    </div>
+  </div>
+</div>
+
+<!-- モーダル：部署の棚卸し入力内容（★第7版追加） -->
+<div class="modal-overlay" id="dept-inv-detail-modal" style="display:none" onclick="if(event.target===this)closeModal('dept-inv-detail-modal')">
+  <div class="modal" style="max-width:820px">
+    <div class="modal-title" id="dept-inv-detail-title">部署の棚卸し入力内容</div>
+    <div id="dept-inv-detail-sub" style="font-size:12px;color:var(--muted);margin-bottom:10px"></div>
+    <div style="margin-bottom:12px">
+      <button class="btn btn-outline btn-sm" onclick="exportDeptInventoryDetail()">📊 この部署をExcel出力</button>
+    </div>
+    <div id="dept-inv-detail-wrap" style="max-height:480px;overflow-y:auto;border:1px solid var(--border);border-radius:8px">
+      <div style="text-align:center;padding:24px;color:var(--muted);font-size:13px"><span class="spinner"></span></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-cancel-modal" onclick="closeModal('dept-inv-detail-modal')">閉じる</button>
     </div>
   </div>
 </div>
@@ -2628,6 +2666,126 @@ async function saveArrival() {
     await loadWarehouseStock();
     showToast(`✅ ${qty}個の入荷を登録しました`, 'success');
   } catch(e) { showToast('❌ 入荷登録失敗: ' + e.message, 'error'); }
+}
+
+// ── ★第7版追加：部署別 棚卸し入力状況（管理者が各部署の入力内容を確認・出力する） ──────────────
+let deptInvOverview = [];
+let currentDeptInvDetail = { deptName: '', rows: [] };
+
+// 状態の判定：対象なし／未着手／入力中／完了
+function _deptInvStatus(o) {
+  if (!o.targetCount) return { key: 'none', label: '対象なし', color: 'var(--muted)' };
+  if (o.enteredCount === 0) return { key: 'todo', label: '未着手', color: 'var(--danger)' };
+  if (o.enteredCount >= o.targetCount) return { key: 'done', label: '完了', color: 'var(--success, #2e7d32)' };
+  return { key: 'doing', label: '入力中', color: '#e08a00' };
+}
+function _fmtInvTime(v) { return v ? String(v).slice(0, 16) : '—'; }
+
+async function loadDeptInventoryOverview() {
+  const tbody = document.getElementById('dept-inv-tbody');
+  tbody.innerHTML = '<tr class="loading-row"><td colspan="5"><span class="spinner"></span> 読み込み中...</td></tr>';
+  try {
+    const res = await gasGet({ action: 'getDeptInventoryOverview', token: getToken() });
+    if (!res.ok) throw new Error(res.error);
+    deptInvOverview = res.data || [];
+    renderDeptInventoryOverview();
+  } catch (e) {
+    tbody.innerHTML = `<tr><td colspan="5" style="text-align:center;padding:20px;color:var(--danger)">❌ ${esc(e.message)}</td></tr>`;
+  }
+}
+
+function renderDeptInventoryOverview() {
+  const tbody = document.getElementById('dept-inv-tbody');
+  const sum = { done: 0, doing: 0, todo: 0, none: 0 };
+  deptInvOverview.forEach(o => { sum[_deptInvStatus(o).key]++; });
+  document.getElementById('dept-inv-summary').innerHTML =
+    `完了 <b>${sum.done}</b> 部署 ／ 入力中 <b>${sum.doing}</b> 部署 ／ 未着手 <b>${sum.todo}</b> 部署` +
+    (sum.none ? ` ／ 対象なし ${sum.none} 部署` : '') +
+    `　<span style="font-size:11px">（対象＝注文履歴のある商品。実数量0の入力も「入力済み」に数えます）</span>`;
+  if (!deptInvOverview.length) {
+    tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;padding:20px;color:var(--muted)">部署がありません</td></tr>';
+    return;
+  }
+  tbody.innerHTML = deptInvOverview.map(o => {
+    const st = _deptInvStatus(o);
+    const pct = o.targetCount ? Math.round(o.enteredCount / o.targetCount * 100) : 0;
+    return `<tr>
+      <td><b>${esc(o.deptName)}</b></td>
+      <td>
+        <div style="display:flex;align-items:center;gap:8px">
+          <div style="flex:1;height:8px;background:#e8eef2;border-radius:4px;overflow:hidden;min-width:100px">
+            <div style="width:${pct}%;height:100%;background:${st.color}"></div>
+          </div>
+          <span style="font-size:12px;white-space:nowrap">${o.enteredCount} / ${o.targetCount}</span>
+        </div>
+      </td>
+      <td style="font-size:12px">${esc(_fmtInvTime(o.lastUpdatedAt))}</td>
+      <td><span style="font-weight:700;color:${st.color}">${st.label}</span></td>
+      <td><button class="btn btn-outline btn-sm" onclick="openDeptInventoryDetail('${esc(o.deptId)}')">詳細</button></td>
+    </tr>`;
+  }).join('');
+}
+
+async function openDeptInventoryDetail(deptId) {
+  const o = deptInvOverview.find(x => x.deptId === deptId) || { deptName: deptId, enteredCount: 0, targetCount: 0 };
+  document.getElementById('dept-inv-detail-modal').style.display = 'flex';
+  document.getElementById('dept-inv-detail-title').textContent = '📋 ' + o.deptName + ' の棚卸し入力内容';
+  document.getElementById('dept-inv-detail-sub').textContent = '';
+  const wrap = document.getElementById('dept-inv-detail-wrap');
+  wrap.innerHTML = '<div style="text-align:center;padding:24px;color:var(--muted);font-size:13px"><span class="spinner"></span></div>';
+  currentDeptInvDetail = { deptName: o.deptName, rows: [] };
+  try {
+    // 既存のAPI（管理者は deptId を指定すると、その部署の内容を取得できる）
+    const res = await gasGet({ action: 'getDeptInventoryForEdit', token: getToken(), deptId: deptId });
+    if (!res.ok) throw new Error(res.error);
+    const rows = res.data || [];
+    currentDeptInvDetail.rows = rows;
+    const entered = rows.filter(r => r.enteredQty !== '' && r.enteredQty !== null).length;
+    document.getElementById('dept-inv-detail-sub').textContent = `入力済み ${entered} / ${rows.length} 品目（未入力の行は赤字で表示）`;
+    if (!rows.length) {
+      wrap.innerHTML = '<div style="text-align:center;padding:24px;color:var(--muted);font-size:13px">対象商品がありません（注文履歴がありません）</div>';
+      return;
+    }
+    wrap.innerHTML = `<table><thead><tr><th>商品コード</th><th>品名</th><th>規格</th><th>単位</th><th>累計注文数</th><th>入力数量</th><th>入力日時</th></tr></thead><tbody>` +
+      rows.map(r => {
+        const done = r.enteredQty !== '' && r.enteredQty !== null;
+        return `<tr>
+          <td>${esc(r.code)}</td><td>${esc(r.name)}</td><td>${esc(r.spec || '')}</td><td>${esc(r.unit || '')}</td>
+          <td style="text-align:right">${esc(r.orderedQty)}</td>
+          <td style="text-align:right;font-weight:700;${done ? '' : 'color:var(--danger)'}">${done ? esc(r.enteredQty) : '未入力'}</td>
+          <td style="font-size:12px">${esc(_fmtInvTime(r.updatedAt))}</td>
+        </tr>`;
+      }).join('') + '</tbody></table>';
+  } catch (e) {
+    wrap.innerHTML = `<div style="text-align:center;padding:24px;color:var(--danger);font-size:13px">❌ ${esc(e.message)}</div>`;
+  }
+}
+
+function exportDeptInventoryDetail() {
+  const d = currentDeptInvDetail;
+  if (!d.rows.length) { showToast('出力するデータがありません', 'error'); return; }
+  const headers = ['商品コード', '品名', '型番', '規格', '単位', '単価', '累計注文数', '実数量', '記入日時'];
+  const rows = d.rows.map(r => [r.code, r.name, r.model || '', r.spec || '', r.unit || '', r.price || '', r.orderedQty, r.enteredQty, r.updatedAt || '']);
+  downloadExcel('棚卸し入力結果_' + d.deptName, headers, rows, [10, 24, 14, 14, 8, 10, 12, 10, 18], d.deptName.slice(0, 28));
+  showToast('📊 ' + d.deptName + ' の入力内容をダウンロードしました', 'success');
+}
+
+// 全部署の入力内容を1つのファイルに出力（部署×商品の一覧）
+async function exportAllDeptInventory(kind) {
+  try {
+    showToast('全部署の入力内容を取得しています...', '');
+    const res = await gasGet({ action: 'getAllDeptInventoryRows', token: getToken() });
+    if (!res.ok) throw new Error(res.error);
+    const data = res.data || [];
+    if (!data.length) { showToast('出力するデータがありません', 'error'); return; }
+    const headers = ['部署ID', '部署名', '商品コード', '品名', '型番', '規格', '単位', '単価', '累計注文数', '実数量', '記入日時', '記入者'];
+    const rows = data.map(r => [r.deptId, r.deptName, r.code, r.name, r.model || '', r.spec || '', r.unit || '', r.price || '', r.orderedQty, r.enteredQty, r.updatedAt || '', r.updatedBy || '']);
+    if (kind === 'csv') downloadCSV('部署別棚卸し入力結果', headers, rows);
+    else downloadExcel('部署別棚卸し入力結果', headers, rows, [8, 16, 10, 24, 14, 14, 8, 10, 12, 10, 18, 14], '部署別棚卸し');
+    showToast('📊 全部署の入力内容をダウンロードしました（' + data.length + '行）', 'success');
+  } catch (e) {
+    showToast('❌ 出力に失敗しました: ' + e.message, 'error', 5000);
+  }
 }
 
 // ── 倉庫棚卸し画面入力（iPad対応・その場入力） ───────────────────
