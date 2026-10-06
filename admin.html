@@ -1244,19 +1244,23 @@ let stockLoaded = false;
 // 1本が失敗しても他に影響しない。元に戻す場合は true にする。
 const USE_BATCH_INITIAL_LOAD = false;
 
+// ★第7版追加：タブごとの遅延読み込み。初期表示で読むのはダッシュボードと部署（絞り込み用）のみとし、
+// 他のタブのデータは、そのタブを初めて開いたときに自動で読み込む（以降は保持。各タブの更新ボタンで再取得）。
+const _tabData = {};   // key -> Promise（読み込み開始済みのもの）
+const _TAB_DATA_LOADERS = () => ({ orders: loadOrders, requests: loadRequests, products: loadProducts, depts: loadDepts, vendors: loadVendors, notices: loadNotices, calendar: loadCalendarEvents });
+function ensureData(key) {
+  if (!_tabData[key]) _tabData[key] = Promise.resolve().then(() => _TAB_DATA_LOADERS()[key]()).catch(() => {});
+  return _tabData[key];
+}
+// タブ → 必要なデータ（注文管理タブの統計カードは未処理依頼数も使う。在庫管理タブは商品マスタを使う）
+const TAB_DATA = { orders: ['orders', 'requests'], products: ['products'], departments: ['depts'], notices: ['notices'],
+                   calendar: ['calendar'], vendors: ['vendors'], requests: ['requests'], stock: ['products'] };
+
 async function loadAdminInitialData() {
   if (!USE_BATCH_INITIAL_LOAD) {
+    _tabData.depts = loadDepts();   // ダッシュボードの部署絞り込みで使う
     loadDashboard();
-    loadOrders();
-    // 在庫管理タブは商品マスタ（allProducts）に依存するため、商品マスタの取得完了後に再描画する
-    // （在庫データの方が先に届いた場合の表示漏れを防ぐ）
-    loadProducts().then(() => { if (stockLoaded) renderWarehouseStock(); }).catch(() => {});
-    loadDepts();
-    loadVendors();
-    loadNotices();
-    loadCalendarEvents();
-    loadRequests();
-    return false;   // 在庫管理タブは switchTab 側で個別に取得される
+    return false;   // 他のタブは switchTab で、初めて開いたときに読み込む
   }
   try {
     const _t0 = performance.now();   // ★診断用：ブラウザ側の所要時間（サーバー処理時間との差＝通信経路の時間）
@@ -1322,6 +1326,10 @@ function switchTab(name, skipReload) {
   });
   document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
   document.getElementById('tab-' + name).classList.add('active');
+  // ★第7版追加：初めて開くタブのデータを自動で読み込む（読み込み済みなら何もしない）
+  (TAB_DATA[name] || []).forEach(k => ensureData(k));
+  // 在庫管理タブ：商品マスタが後から届いた場合に再描画する（表示漏れ防止）
+  if (name === 'stock') ensureData('products').then(() => { if (stockLoaded) renderWarehouseStock(); });
   // ★修正：skipReload=true の場合、既に一括取得（loadAdminInitialData）済みのタブは
   // 再取得しない。管理者管理・操作ログはそもそも一括取得の対象外のため対象外。
   // ★修正：以前は「在庫管理」タブをクリックするたびに、既にデータを
@@ -1607,7 +1615,8 @@ function exportOrderCSV() {
   downloadCSV('注文履歴', h, rows);
 }
 
-function exportInventoryCSV(type) {
+async function exportInventoryCSV(type) {
+  await Promise.all([ensureData('products'), ensureData('orders')]);   // ★第7版追加：未読み込みなら先に読み込む
   if (type === 'warehouse') {
     const h = ['商品コード','品名','型番','規格','単位','単価','保管場所','在庫定数','実数量（記入欄）'];
     const rows = allProducts.filter(p => p.stockManaged || p.stockFlag).map(p => [p.code, p.name, p.model||'', p.spec||'', p.unit||'', p.price||'', p.location||'', p.stockMin||p.stockPar||'', '']);
@@ -2669,10 +2678,14 @@ async function saveArrival() {
 }
 
 // ── ★第7版追加：部署別 棚卸し入力状況（管理者が各部署の入力内容を確認・出力する） ──────────────
+// 「読み込み・更新」は状況一覧だけを取得する（軽い）。部署の詳細・Excel出力は、その部署の分だけを
+// 開いたときに取得する（読み込み・更新から5分以内ならサーバー側で高速に返る）。
+// 全部署の一括出力は使用頻度が低いため、時間がかかっても最新を取得し直す方式にしている。
 let deptInvOverview = [];
+let deptInvDetailCache = {};      // deptId -> rows（「読み込み・更新」で破棄）
+let deptInvDetailSeq = 0;
 let currentDeptInvDetail = { deptName: '', rows: [] };
 
-// 状態の判定：対象なし／未着手／入力中／完了
 function _deptInvStatus(o) {
   if (!o.targetCount) return { key: 'none', label: '対象なし', color: 'var(--muted)' };
   if (o.enteredCount === 0) return { key: 'todo', label: '未着手', color: 'var(--danger)' };
@@ -2680,6 +2693,13 @@ function _deptInvStatus(o) {
   return { key: 'doing', label: '入力中', color: '#e08a00' };
 }
 function _fmtInvTime(v) { return v ? String(v).slice(0, 16) : '—'; }
+function _isEntered(v) { return v !== '' && v !== null && v !== undefined; }
+// 在庫金額＝単価×実数量（未入力、または単価が未登録の場合は空欄）
+function _invAmount(price, qty) {
+  const p = Number(price), q = Number(qty);
+  if (!_isEntered(qty) || !p || isNaN(q)) return '';
+  return Math.round(p * q * 100) / 100;
+}
 
 async function loadDeptInventoryOverview() {
   const tbody = document.getElementById('dept-inv-tbody');
@@ -2688,20 +2708,23 @@ async function loadDeptInventoryOverview() {
     const res = await gasGet({ action: 'getDeptInventoryOverview', token: getToken() });
     if (!res.ok) throw new Error(res.error);
     deptInvOverview = res.data || [];
-    renderDeptInventoryOverview();
+    deptInvDetailCache = {};
+    renderDeptInventoryOverview(new Date());
   } catch (e) {
     tbody.innerHTML = `<tr><td colspan="5" style="text-align:center;padding:20px;color:var(--danger)">❌ ${esc(e.message)}</td></tr>`;
   }
 }
 
-function renderDeptInventoryOverview() {
+function renderDeptInventoryOverview(loadedAt) {
   const tbody = document.getElementById('dept-inv-tbody');
   const sum = { done: 0, doing: 0, todo: 0, none: 0 };
   deptInvOverview.forEach(o => { sum[_deptInvStatus(o).key]++; });
+  const t = loadedAt ? `${String(loadedAt.getHours()).padStart(2,'0')}:${String(loadedAt.getMinutes()).padStart(2,'0')}:${String(loadedAt.getSeconds()).padStart(2,'0')}` : '';
   document.getElementById('dept-inv-summary').innerHTML =
     `完了 <b>${sum.done}</b> 部署 ／ 入力中 <b>${sum.doing}</b> 部署 ／ 未着手 <b>${sum.todo}</b> 部署` +
     (sum.none ? ` ／ 対象なし ${sum.none} 部署` : '') +
-    `　<span style="font-size:11px">（対象＝注文履歴のある商品。実数量0の入力も「入力済み」に数えます）</span>`;
+    (t ? `　<span style="font-size:11px">最終読み込み ${t}</span>` : '') +
+    `<div style="font-size:11px;margin-top:4px">対象＝注文履歴のある商品。実数量0の入力も「入力済み」に数えます。最新の内容にするには「読み込み・更新」を押してください。</div>`;
   if (!deptInvOverview.length) {
     tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;padding:20px;color:var(--muted)">部署がありません</td></tr>';
     return;
@@ -2726,62 +2749,70 @@ function renderDeptInventoryOverview() {
   }).join('');
 }
 
+// その部署の分だけを取得して表示する（同じ部署を再度開くときは取得済みの内容を使う）
 async function openDeptInventoryDetail(deptId) {
-  const o = deptInvOverview.find(x => x.deptId === deptId) || { deptName: deptId, enteredCount: 0, targetCount: 0 };
+  const o = deptInvOverview.find(x => x.deptId === deptId) || { deptName: deptId };
+  const seq = ++deptInvDetailSeq;
+  currentDeptInvDetail = { deptName: o.deptName, rows: [] };
   document.getElementById('dept-inv-detail-modal').style.display = 'flex';
   document.getElementById('dept-inv-detail-title').textContent = '📋 ' + o.deptName + ' の棚卸し入力内容';
   document.getElementById('dept-inv-detail-sub').textContent = '';
   const wrap = document.getElementById('dept-inv-detail-wrap');
-  wrap.innerHTML = '<div style="text-align:center;padding:24px;color:var(--muted);font-size:13px"><span class="spinner"></span></div>';
-  currentDeptInvDetail = { deptName: o.deptName, rows: [] };
-  try {
-    // 既存のAPI（管理者は deptId を指定すると、その部署の内容を取得できる）
-    const res = await gasGet({ action: 'getDeptInventoryForEdit', token: getToken(), deptId: deptId });
-    if (!res.ok) throw new Error(res.error);
-    const rows = res.data || [];
-    currentDeptInvDetail.rows = rows;
-    const entered = rows.filter(r => r.enteredQty !== '' && r.enteredQty !== null).length;
-    document.getElementById('dept-inv-detail-sub').textContent = `入力済み ${entered} / ${rows.length} 品目（未入力の行は赤字で表示）`;
-    if (!rows.length) {
-      wrap.innerHTML = '<div style="text-align:center;padding:24px;color:var(--muted);font-size:13px">対象商品がありません（注文履歴がありません）</div>';
+  let rows = deptInvDetailCache[deptId];
+  if (!rows) {
+    wrap.innerHTML = '<div style="text-align:center;padding:24px;color:var(--muted);font-size:13px"><span class="spinner"></span></div>';
+    try {
+      const res = await gasGet({ action: 'getDeptInventoryDetail', token: getToken(), deptId: deptId });
+      if (!res.ok) throw new Error(res.error);
+      rows = res.data || [];
+      deptInvDetailCache[deptId] = rows;
+    } catch (e) {
+      if (seq === deptInvDetailSeq) wrap.innerHTML = `<div style="text-align:center;padding:24px;color:var(--danger);font-size:13px">❌ ${esc(e.message)}</div>`;
       return;
     }
-    wrap.innerHTML = `<table><thead><tr><th>商品コード</th><th>品名</th><th>規格</th><th>単位</th><th>累計注文数</th><th>入力数量</th><th>入力日時</th></tr></thead><tbody>` +
-      rows.map(r => {
-        const done = r.enteredQty !== '' && r.enteredQty !== null;
-        return `<tr>
-          <td>${esc(r.code)}</td><td>${esc(r.name)}</td><td>${esc(r.spec || '')}</td><td>${esc(r.unit || '')}</td>
-          <td style="text-align:right">${esc(r.orderedQty)}</td>
-          <td style="text-align:right;font-weight:700;${done ? '' : 'color:var(--danger)'}">${done ? esc(r.enteredQty) : '未入力'}</td>
-          <td style="font-size:12px">${esc(_fmtInvTime(r.updatedAt))}</td>
-        </tr>`;
-      }).join('') + '</tbody></table>';
-  } catch (e) {
-    wrap.innerHTML = `<div style="text-align:center;padding:24px;color:var(--danger);font-size:13px">❌ ${esc(e.message)}</div>`;
   }
+  if (seq !== deptInvDetailSeq) return;     // 別の部署を開き直した場合は、古い結果を表示しない
+  currentDeptInvDetail.rows = rows;
+  const entered = rows.filter(r => _isEntered(r.enteredQty)).length;
+  document.getElementById('dept-inv-detail-sub').textContent = `入力済み ${entered} / ${rows.length} 品目（未入力の行は赤字で表示）`;
+  if (!rows.length) {
+    wrap.innerHTML = '<div style="text-align:center;padding:24px;color:var(--muted);font-size:13px">対象商品がありません（注文履歴がありません）</div>';
+    return;
+  }
+  wrap.innerHTML = `<table><thead><tr><th>商品コード</th><th>品名</th><th>規格</th><th>単位</th><th>累計注文数</th><th>入力数量</th><th>入力日時</th></tr></thead><tbody>` +
+    rows.map(r => {
+      const done = _isEntered(r.enteredQty);
+      return `<tr>
+        <td>${esc(r.code)}</td><td>${esc(r.name)}</td><td>${esc(r.spec || '')}</td><td>${esc(r.unit || '')}</td>
+        <td style="text-align:right">${esc(r.orderedQty)}</td>
+        <td style="text-align:right;font-weight:700;${done ? '' : 'color:var(--danger)'}">${done ? esc(r.enteredQty) : '未入力'}</td>
+        <td style="font-size:12px">${esc(_fmtInvTime(r.updatedAt))}</td>
+      </tr>`;
+    }).join('') + '</tbody></table>';
 }
 
+// この部署をExcel出力（表示中の内容を出力するため、通信なし。在庫金額＝単価×実数量）
 function exportDeptInventoryDetail() {
   const d = currentDeptInvDetail;
   if (!d.rows.length) { showToast('出力するデータがありません', 'error'); return; }
-  const headers = ['商品コード', '品名', '型番', '規格', '単位', '単価', '累計注文数', '実数量', '記入日時'];
-  const rows = d.rows.map(r => [r.code, r.name, r.model || '', r.spec || '', r.unit || '', r.price || '', r.orderedQty, r.enteredQty, r.updatedAt || '']);
-  downloadExcel('棚卸し入力結果_' + d.deptName, headers, rows, [10, 24, 14, 14, 8, 10, 12, 10, 18], d.deptName.slice(0, 28));
+  const headers = ['商品コード', '品名', '型番', '規格', '単位', '単価', '累計注文数', '実数量', '在庫金額', '記入日時'];
+  const rows = d.rows.map(r => [r.code, r.name, r.model || '', r.spec || '', r.unit || '', r.price || '', r.orderedQty, r.enteredQty, _invAmount(r.price, r.enteredQty), r.updatedAt || '']);
+  downloadExcel('棚卸し入力結果_' + d.deptName, headers, rows, [10, 24, 14, 14, 8, 10, 12, 10, 12, 18], d.deptName.slice(0, 28));
   showToast('📊 ' + d.deptName + ' の入力内容をダウンロードしました', 'success');
 }
 
-// 全部署の入力内容を1つのファイルに出力（部署×商品の一覧）
+// 全部署の入力内容を1つのファイルに出力（使用頻度が低いため、時間がかかっても常に最新を取得する）
 async function exportAllDeptInventory(kind) {
   try {
-    showToast('全部署の入力内容を取得しています...', '');
+    showToast('全部署の入力内容を取得しています（しばらくかかります）...', '');
     const res = await gasGet({ action: 'getAllDeptInventoryRows', token: getToken() });
     if (!res.ok) throw new Error(res.error);
     const data = res.data || [];
     if (!data.length) { showToast('出力するデータがありません', 'error'); return; }
-    const headers = ['部署ID', '部署名', '商品コード', '品名', '型番', '規格', '単位', '単価', '累計注文数', '実数量', '記入日時', '記入者'];
-    const rows = data.map(r => [r.deptId, r.deptName, r.code, r.name, r.model || '', r.spec || '', r.unit || '', r.price || '', r.orderedQty, r.enteredQty, r.updatedAt || '', r.updatedBy || '']);
+    const headers = ['部署ID', '部署名', '商品コード', '品名', '型番', '規格', '単位', '単価', '累計注文数', '実数量', '在庫金額', '記入日時', '記入者'];
+    const rows = data.map(r => [r.deptId, r.deptName, r.code, r.name, r.model || '', r.spec || '', r.unit || '', r.price || '', r.orderedQty, r.enteredQty, _invAmount(r.price, r.enteredQty), r.updatedAt || '', r.updatedBy || '']);
     if (kind === 'csv') downloadCSV('部署別棚卸し入力結果', headers, rows);
-    else downloadExcel('部署別棚卸し入力結果', headers, rows, [8, 16, 10, 24, 14, 14, 8, 10, 12, 10, 18, 14], '部署別棚卸し');
+    else downloadExcel('部署別棚卸し入力結果', headers, rows, [8, 16, 10, 24, 14, 14, 8, 10, 12, 10, 12, 18, 14], '部署別棚卸し');
     showToast('📊 全部署の入力内容をダウンロードしました（' + data.length + '行）', 'success');
   } catch (e) {
     showToast('❌ 出力に失敗しました: ' + e.message, 'error', 5000);
