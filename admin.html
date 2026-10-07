@@ -1389,6 +1389,10 @@ async function loadDashboard(preData, forceRefresh) {
       if (!res.ok) throw new Error(res.error);
       return res.data;
     })();
+    if (data && data._perf) {   // ★診断用
+      const pf = data._perf;
+      console.log('[診断] ダッシュボード サーバー処理=' + pf.totalMs + 'ms（注文' + pf.ordersMs + 'ms・集計' + pf.aggregateMs + 'ms・商品' + pf.productsMs + 'ms・倉庫在庫' + pf.stockMs + 'ms）注文シート' + pf.orderRows + '行→対象' + pf.targetRows + '行' + (data._cached ? '　※キャッシュ（上記は作成時の値）' : ''));
+    }
     renderDashboard(data);
   } catch(e) {
     showToast('❌ ダッシュボードの取得に失敗しました: ' + e.message, 'error');
