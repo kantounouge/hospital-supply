@@ -377,6 +377,7 @@ async function gasGetFetch(params, timeoutMs) {
 //   JSONPで自動的に再送しない（注文・登録などの二重実行を防ぐ）。
 const _GAS_MAX_CONCURRENT = 6;
 const _RETRY_DELAYS_MS = [500, 1500, 3000];
+const _NETFAIL_RETRY_DELAYS_MS = [300, 1000];   // 通信の開始前に失敗した場合の再試行間隔
 const _READ_TIMEOUT_MS = 12000;   // 読み取り系1回あたりの応答待ち上限
 // ★第7版追加：パスワードを含む要求は POST（本文）で送り、URL・JSONP には載せない
 function _hasSecretParam(p) { return Object.prototype.hasOwnProperty.call(p, 'password'); }
@@ -432,13 +433,17 @@ async function _gasGetInner(params) {
     console.log('[診断] 1回目のfetchが失敗するまで ' + Math.round(performance.now() - tFirst) + 'ms (' + params.action + ')');
   }
 
-  if (fetchErr.htmlResponse) {
-    if (!_SAFE_RETRY_RE.test(params.action || '')) {
+  // ★第7版追加：通信の開始前に失敗した場合（ブロック・接続失敗など。TypeError）は、読み取り系に限り、
+  // 遅いJSONPへ切り替える前に fetch を短い間隔で再試行する。実測で、ページ表示直後の最初の通信が
+  // 約40ミリ秒で失敗（CORS Failed）し、その直後の通信は成功する事例があったため。
+  const _netFail = !fetchErr.htmlResponse && fetchErr instanceof TypeError;
+  if (fetchErr.htmlResponse || (_netFail && _safe)) {
+    if (fetchErr.htmlResponse && !_safe) {
       console.warn('書き込み系の応答がGoogle側エラーページだったため、自動再送しません:', params.action);
       throw new Error('サーバーからの応答を受け取れませんでした。処理は完了している場合があります。画面を再読み込みして内容を確認してから、必要な場合のみ再度操作してください。');
     }
-    for (const delay of _RETRY_DELAYS_MS) {
-      console.warn('Google側エラーページを受信。' + delay + 'ms後にfetchを再試行します:', params.action);
+    for (const delay of (fetchErr.htmlResponse ? _RETRY_DELAYS_MS : _NETFAIL_RETRY_DELAYS_MS)) {
+      console.warn((fetchErr.htmlResponse ? 'Google側エラーページを受信。' : '通信の開始前に失敗。') + delay + 'ms後にfetchを再試行します:', params.action);
       const tSleep = performance.now();
       await _sleep(delay);
       const tRetry = performance.now();
@@ -448,7 +453,7 @@ async function _gasGetInner(params) {
         return r;
       } catch (e) {
         console.log('[診断] 再試行失敗：待機 設定' + delay + 'ms→実測' + Math.round(tRetry - tSleep) + 'ms / fetch ' + Math.round(performance.now() - tRetry) + 'ms');
-        if (!e.htmlResponse) { fetchErr = e; break; }
+        if (!e.htmlResponse && !(e instanceof TypeError)) { fetchErr = e; break; }
       }
     }
   }
