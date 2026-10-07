@@ -193,7 +193,7 @@ select.form-control{appearance:none;background-image:url("data:image/svg+xml,%3C
         <span id="dash-range-sep" style="display:none;color:var(--muted);font-size:12px">〜</span>
         <input type="date" id="dash-end" style="display:none">
         <button class="btn btn-outline btn-sm" id="dash-apply-btn" style="display:none" onclick="loadDashboard()">適用</button>
-        <button class="btn btn-outline btn-sm" onclick="loadDashboard()">🔄 更新</button>
+        <button class="btn btn-outline btn-sm" onclick="loadDashboard(null, true)">🔄 更新</button>
       </div>
     </div>
     <div id="dash-period-label" style="font-size:12px;color:var(--muted);padding:0 20px 12px">読み込み中...</div>
@@ -1377,7 +1377,7 @@ function dashPeriodRange() {
   }
 }
 
-async function loadDashboard(preData) {
+async function loadDashboard(preData, forceRefresh) {
   const { start, end } = dashPeriodRange();
   const deptId = document.getElementById('dash-dept').value;
   const deptSel = document.getElementById('dash-dept');
@@ -1385,7 +1385,7 @@ async function loadDashboard(preData) {
   document.getElementById('dash-period-label').textContent = `対象期間：${start} 〜 ${end}${deptLabel}`;
   try {
     const data = preData || await (async () => {
-      const res = await gasGet({ action: 'getDashboardStats', token: getToken(), startDate: start, endDate: end, deptId });
+      const res = await gasGet({ action: 'getDashboardStats', token: getToken(), startDate: start, endDate: end, deptId, refresh: forceRefresh ? '1' : '' });
       if (!res.ok) throw new Error(res.error);
       return res.data;
     })();
