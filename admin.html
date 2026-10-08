@@ -193,7 +193,7 @@ select.form-control{appearance:none;background-image:url("data:image/svg+xml,%3C
         <span id="dash-range-sep" style="display:none;color:var(--muted);font-size:12px">〜</span>
         <input type="date" id="dash-end" style="display:none">
         <button class="btn btn-outline btn-sm" id="dash-apply-btn" style="display:none" onclick="loadDashboard()">適用</button>
-        <button class="btn btn-outline btn-sm" onclick="loadDashboard(null, true)">🔄 更新</button>
+        <button class="btn btn-outline btn-sm" id="dash-refresh-btn" onclick="loadDashboard(null, true)">🔄 更新</button>
       </div>
     </div>
     <div id="dash-period-label" style="font-size:12px;color:var(--muted);padding:0 20px 12px">読み込み中...</div>
@@ -1382,25 +1382,85 @@ function dashPeriodRange() {
   }
 }
 
+// ★第8版：ダッシュボードの表示を速くするための仕組み
+//  ・同じ条件の前回結果を保持し、タブを開き直したときは前回の内容を即時に表示する
+//  ・保持した結果が新しい（30秒以内）なら再取得しない。古ければ、表示したまま裏で取得して差し替える
+//  ・同じ条件の取得がすでに実行中なら、それに相乗りする（二重のリクエストを出さない）
+//  ・複数の取得が重なっても、最後に操作した条件の結果だけを表示する
+const DASH_FRESH_MS = 30000;
+const _dashStore = {};      // key → { data, at }
+const _dashInflight = {};   // key|refresh → Promise
+let _dashSeq = 0;
+
+function _dashAgeText(d) {
+  if (!d || !d._computedAt) return '';
+  const min = Math.floor((Date.now() - d._computedAt) / 60000);
+  const t = new Date(d._computedAt);
+  const hhmm = String(t.getHours()).padStart(2, '0') + ':' + String(t.getMinutes()).padStart(2, '0');
+  return `　｜　集計：${hhmm}${min >= 1 ? '（' + min + '分前）' : ''}`;
+}
+
 async function loadDashboard(preData, forceRefresh) {
   const { start, end } = dashPeriodRange();
   const deptId = document.getElementById('dash-dept').value;
   const deptSel = document.getElementById('dash-dept');
   const deptLabel = deptId ? `　｜　対象部署：${deptSel.options[deptSel.selectedIndex].text}` : '';
-  document.getElementById('dash-period-label').textContent = `対象期間：${start} 〜 ${end}${deptLabel}`;
+  const labelEl = document.getElementById('dash-period-label');
+  const baseLabel = `対象期間：${start} 〜 ${end}${deptLabel}`;
+  const key = [start, end, deptId].join('|');
+  const mySeq = ++_dashSeq;
+  const btn = document.getElementById('dash-refresh-btn');
+  const setBusy = on => { if (btn) { btn.disabled = on; btn.textContent = on ? '⏳ 更新中…' : '🔄 更新'; } };
+  labelEl.textContent = baseLabel;
+
+  if (preData) {   // 一括取得（USE_BATCH_INITIAL_LOAD）で得たデータ
+    _dashStore[key] = { data: preData, at: Date.now() };
+    labelEl.textContent = baseLabel + _dashAgeText(preData);
+    renderDashboard(preData);
+    return;
+  }
+
+  const stored = _dashStore[key];
+  let shownStale = false;
+  if (stored && !forceRefresh) {
+    labelEl.textContent = baseLabel + _dashAgeText(stored.data);
+    renderDashboard(stored.data);
+    if (Date.now() - stored.at < DASH_FRESH_MS) {
+      console.log('[診断] ダッシュボード 前回の結果を利用（' + Math.round((Date.now() - stored.at) / 1000) + '秒前・再取得なし）');
+      return;
+    }
+    shownStale = true;
+    console.log('[診断] ダッシュボード 前回の結果を即時表示し、裏で再取得します');
+  } else if (!stored) {
+    labelEl.textContent = baseLabel + '　｜　読み込み中...';
+  }
+  if (forceRefresh) setBusy(true);
+
   try {
-    const data = preData || await (async () => {
-      const res = await gasGet({ action: 'getDashboardStats', token: getToken(), startDate: start, endDate: end, deptId, refresh: forceRefresh ? '1' : '' });
-      if (!res.ok) throw new Error(res.error);
-      return res.data;
-    })();
+    const ik = key + '|' + (forceRefresh ? '1' : '');
+    if (!_dashInflight[ik]) {
+      _dashInflight[ik] = (async () => {
+        const res = await gasGet({ action: 'getDashboardStats', token: getToken(), startDate: start, endDate: end, deptId, refresh: forceRefresh ? '1' : '' });
+        if (!res.ok) throw new Error(res.error);
+        return res.data;
+      })().finally(() => { delete _dashInflight[ik]; });
+    } else {
+      console.log('[診断] ダッシュボード 実行中の同じ取得に相乗りします');
+    }
+    const data = await _dashInflight[ik];
+    _dashStore[key] = { data: data, at: Date.now() };
+    if (mySeq !== _dashSeq) return;   // その後に別の条件で操作された場合は、古い結果を表示しない
     if (data && data._perf) {   // ★診断用
       const pf = data._perf;
-      console.log('[診断] ダッシュボード サーバー処理=' + pf.totalMs + 'ms（注文' + pf.ordersMs + 'ms・集計' + pf.aggregateMs + 'ms・商品' + pf.productsMs + 'ms・倉庫在庫' + pf.stockMs + 'ms）注文シート' + pf.orderRows + '行→対象' + pf.targetRows + '行' + (data._cached ? '　※キャッシュ（上記は作成時の値）' : ''));
+      console.log('[診断] ダッシュボード サーバー処理=' + pf.totalMs + 'ms（注文' + pf.ordersMs + 'ms・集計' + pf.aggregateMs + 'ms・商品' + pf.productsMs + 'ms・倉庫在庫' + pf.stockMs + 'ms）注文シート' + pf.orderRows + '行→対象' + pf.targetRows + '行' + (data._cached ? '　※キャッシュ（上記は作成時の値）' : '') + (data._precomputed ? '　※事前計算' : ''));
     }
+    labelEl.textContent = baseLabel + _dashAgeText(data);
     renderDashboard(data);
   } catch(e) {
+    if (mySeq === _dashSeq && !shownStale) labelEl.textContent = baseLabel;
     showToast('❌ ダッシュボードの取得に失敗しました: ' + e.message, 'error');
+  } finally {
+    if (forceRefresh) setBusy(false);
   }
 }
 
