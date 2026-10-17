@@ -510,6 +510,19 @@ select.form-control{appearance:none;background-image:url("data:image/svg+xml,%3C
         <button class="btn btn-outline btn-sm" onclick="exportAllDeptInventory('csv')">📥 CSV出力</button>
       </div>
     </div>
+    <!-- ★第9版：棚卸し期（基準日で対象リストを固定。年度末の3/31・9/30など） -->
+    <div id="inv-period-bar" style="padding:12px 16px;border-bottom:1px solid var(--border);display:flex;flex-wrap:wrap;gap:10px;align-items:center">
+      <span style="font-size:12px;color:var(--muted)">棚卸し期</span>
+      <select id="inv-period-select" class="form-control" style="min-width:210px;width:auto" onchange="onInvPeriodChange()">
+        <option value="">（「読み込み・更新」を押してください）</option>
+      </select>
+      <span id="inv-period-status" style="font-weight:700;font-size:13px"></span>
+      <span style="flex:1"></span>
+      <button id="inv-start-btn"   class="btn btn-primary btn-sm" onclick="openInvStartModal()">🆕 棚卸しを開始</button>
+      <button id="inv-confirm-btn" class="btn btn-outline btn-sm" style="display:none" onclick="confirmInvPeriod()">✅ 確定する</button>
+      <button id="inv-reopen-btn"  class="btn btn-outline btn-sm" style="display:none" onclick="reopenInvPeriod()">↩ 確定を解除</button>
+      <button id="inv-discard-btn" class="btn btn-outline btn-sm" style="display:none;color:var(--danger)" onclick="discardInvPeriod()">🗑 この期を破棄</button>
+    </div>
     <div class="card-body" style="padding:0">
       <div id="dept-inv-summary" style="padding:10px 16px;font-size:13px;color:var(--muted)">「読み込み・更新」を押すと、各部署の入力状況を表示します。</div>
       <div class="tbl-wrap">
@@ -649,6 +662,33 @@ select.form-control{appearance:none;background-image:url("data:image/svg+xml,%3C
     </div>
     <div class="modal-footer">
       <button class="btn-cancel-modal" onclick="closeModal('warehouse-inv-modal')">閉じる</button>
+    </div>
+  </div>
+</div>
+
+<!-- モーダル：棚卸しの開始（★第9版追加） -->
+<div class="modal-overlay" id="inv-start-modal" style="display:none" onclick="if(event.target===this)closeModal('inv-start-modal')">
+  <div class="modal" style="max-width:460px">
+    <div class="modal-title">🆕 棚卸しを開始</div>
+    <div style="font-size:12px;color:var(--muted);line-height:1.7;margin-bottom:12px">
+      基準日までの注文履歴から、部署ごとの棚卸しリストを作成して固定します。開始後に注文が増えても、リストは変わりません。<br>
+      開始すると、各部署の「棚卸し伝票」から入力できるようになります。
+    </div>
+    <div class="form-grid" style="grid-template-columns:1fr">
+      <div class="form-group"><label class="flabel">基準日（棚卸し時点）</label>
+        <input class="form-control" type="date" id="inv-start-date"></div>
+      <div class="form-group"><label class="flabel">対象にする注文の範囲</label>
+        <select class="form-control" id="inv-start-years">
+          <option value="1">基準日から遡って 1年分</option>
+          <option value="2" selected>基準日から遡って 2年分（標準）</option>
+          <option value="3">基準日から遡って 3年分</option>
+          <option value="5">基準日から遡って 5年分</option>
+          <option value="0">全期間</option>
+        </select></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-cancel-modal" onclick="closeModal('inv-start-modal')">キャンセル</button>
+      <button class="btn btn-primary" id="inv-start-submit" onclick="submitInvStart()">開始する</button>
     </div>
   </div>
 </div>
@@ -2763,7 +2803,11 @@ async function saveArrival() {
 let deptInvOverview = [];
 let deptInvDetailCache = {};      // deptId -> rows（「読み込み・更新」で破棄）
 let deptInvDetailSeq = 0;
-let currentDeptInvDetail = { deptName: '', rows: [] };
+let currentDeptInvDetail = { deptName: '', basisDate: '', rows: [] };
+// ★第9版：棚卸し期
+let invPeriods = [];              // 全期（基準日の新しい順）
+let invPeriod = null;             // 表示中の期 { id, basisDate, status, ... }
+let invSelectedPeriodId = '';     // 選択中の期ID（空＝入力中の期、なければ最新の期）
 
 function _deptInvStatus(o) {
   if (!o.targetCount) return { key: 'none', label: '対象なし', color: 'var(--muted)' };
@@ -2784,18 +2828,134 @@ async function loadDeptInventoryOverview() {
   const tbody = document.getElementById('dept-inv-tbody');
   tbody.innerHTML = '<tr class="loading-row"><td colspan="5"><span class="spinner"></span> 読み込み中...</td></tr>';
   try {
-    const res = await gasGet({ action: 'getDeptInventoryOverview', token: getToken() });
+    const res = await gasGet({ action: 'getDeptInventoryOverview', token: getToken(), periodId: invSelectedPeriodId });
     if (!res.ok) throw new Error(res.error);
-    deptInvOverview = res.data || [];
+    const d = res.data || {};
+    invPeriods = d.periods || [];
+    invPeriod = d.period || null;
+    invSelectedPeriodId = invPeriod ? invPeriod.id : '';
+    deptInvOverview = d.rows || [];
     deptInvDetailCache = {};
+    renderInvPeriodBar();
     renderDeptInventoryOverview(new Date());
   } catch (e) {
     tbody.innerHTML = `<tr><td colspan="5" style="text-align:center;padding:20px;color:var(--danger)">❌ ${esc(e.message)}</td></tr>`;
   }
 }
 
+// ── ★第9版：棚卸し期の操作バー ────────────────────────────────
+function _invBasisJa(d) {
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(d || ''));
+  return m ? `${m[1]}年${Number(m[2])}月${Number(m[3])}日` : String(d || '');
+}
+function renderInvPeriodBar() {
+  const sel = document.getElementById('inv-period-select');
+  if (!invPeriods.length) {
+    sel.innerHTML = '<option value="">（棚卸し期はまだありません）</option>';
+  } else {
+    sel.innerHTML = invPeriods.map(p =>
+      `<option value="${esc(p.id)}"${invPeriod && p.id === invPeriod.id ? ' selected' : ''}>${esc(_invBasisJa(p.basisDate))}時点（${esc(p.status)}）</option>`).join('');
+  }
+  const st = document.getElementById('inv-period-status');
+  if (invPeriod) {
+    const open = invPeriod.status === '入力中';
+    st.textContent = open ? '● 入力中（部署が入力できます）' : '● 確定済み（入力できません）';
+    st.style.color = open ? '#e08a00' : 'var(--success, #2e7d32)';
+  } else { st.textContent = ''; }
+  document.getElementById('inv-confirm-btn').style.display = (invPeriod && invPeriod.status === '入力中') ? '' : 'none';
+  document.getElementById('inv-discard-btn').style.display = (invPeriod && invPeriod.status === '入力中') ? '' : 'none';
+  document.getElementById('inv-reopen-btn').style.display  = (invPeriod && invPeriod.status === '確定') ? '' : 'none';
+  const hasOpen = invPeriods.some(p => p.status === '入力中');
+  const startBtn = document.getElementById('inv-start-btn');
+  startBtn.disabled = hasOpen;
+  startBtn.title = hasOpen ? '入力中の棚卸しがあります。先に確定（または破棄）してください' : '';
+}
+function onInvPeriodChange() {
+  invSelectedPeriodId = document.getElementById('inv-period-select').value;
+  loadDeptInventoryOverview();
+}
+
+// 既定の基準日：直近の 3/31 または 9/30（本日以前で最も新しい日）
+function _invDefaultBasis() {
+  const t = new Date(), y = t.getFullYear(), md = (t.getMonth() + 1) * 100 + t.getDate();
+  if (md >= 930) return `${y}-09-30`;
+  if (md >= 331) return `${y}-03-31`;
+  return `${y - 1}-09-30`;
+}
+function _invToday() {
+  const t = new Date();
+  return `${t.getFullYear()}-${String(t.getMonth()+1).padStart(2,'0')}-${String(t.getDate()).padStart(2,'0')}`;
+}
+function openInvStartModal() {
+  const el = document.getElementById('inv-start-date');
+  el.value = _invDefaultBasis();
+  el.max = _invToday();
+  document.getElementById('inv-start-modal').style.display = 'flex';
+}
+async function submitInvStart() {
+  const basisDate = document.getElementById('inv-start-date').value;
+  if (!basisDate) { showToast('基準日を入力してください', 'error'); return; }
+  const years = document.getElementById('inv-start-years').value;
+  const btn = document.getElementById('inv-start-submit');
+  btn.disabled = true; btn.textContent = '作成中...';
+  try {
+    const res = await gasGet({ action: 'startInventoryPeriod', token: getToken(), basisDate, lookbackYears: years });
+    if (!res.ok) throw new Error(res.error);
+    closeModal('inv-start-modal');
+    showToast(`✅ ${_invBasisJa(basisDate)}時点の棚卸しを開始しました（${res.data.deptCount}部署・${res.data.itemCount}行）`, 'success', 5000);
+    invSelectedPeriodId = res.data.period.id;
+    loadDeptInventoryOverview();
+  } catch (e) {
+    showToast('❌ 開始できませんでした: ' + e.message, 'error', 6000);
+  } finally {
+    btn.disabled = false; btn.textContent = '開始する';
+  }
+}
+
+async function _invPeriodAction(action, okMsg) {
+  if (!invPeriod) return;
+  try {
+    const res = await gasGet({ action, token: getToken(), periodId: invPeriod.id });
+    if (!res.ok) throw new Error(res.error);
+    showToast(okMsg, 'success', 4000);
+    return true;
+  } catch (e) {
+    showToast('❌ ' + e.message, 'error', 6000);
+    return false;
+  }
+}
+async function confirmInvPeriod() {
+  if (!invPeriod) return;
+  const st = { todo: 0, doing: 0 };
+  deptInvOverview.forEach(o => { const k = _deptInvStatus(o).key; if (k in st) st[k]++; });
+  let msg = `${_invBasisJa(invPeriod.basisDate)}時点の棚卸しを確定します。\n確定すると、部署は入力できなくなります（あとで「確定を解除」できます）。`;
+  if (st.todo || st.doing) msg = `まだ入力が完了していない部署があります（未着手 ${st.todo} 部署／入力中 ${st.doing} 部署）。\n\n` + msg;
+  msg += '\n\n最新の入力状況を確認するには、先に「読み込み・更新」を押してください。\n確定しますか？';
+  if (!confirm(msg)) return;
+  if (await _invPeriodAction('confirmInventoryPeriod', '✅ 棚卸しを確定しました')) loadDeptInventoryOverview();
+}
+async function reopenInvPeriod() {
+  if (!invPeriod) return;
+  if (!confirm(`${_invBasisJa(invPeriod.basisDate)}時点の確定を解除します。\n部署が再び入力できるようになります。よろしいですか？`)) return;
+  if (await _invPeriodAction('reopenInventoryPeriod', '↩ 確定を解除しました（入力中に戻りました）')) loadDeptInventoryOverview();
+}
+async function discardInvPeriod() {
+  if (!invPeriod) return;
+  const entered = deptInvOverview.reduce((n, o) => n + (o.enteredCount || 0), 0);
+  if (!confirm(`${_invBasisJa(invPeriod.basisDate)}時点の棚卸しを破棄します。\n作成したリストと、これまでの入力内容（${entered}件）がすべて削除されます。\n\n開始の日付や範囲を間違えたときのやり直し用です。続けますか？`)) return;
+  if (!confirm('本当に破棄しますか？この操作は取り消せません。')) return;
+  invSelectedPeriodId = '';
+  if (await _invPeriodAction('discardInventoryPeriod', '🗑 棚卸し期を破棄しました')) loadDeptInventoryOverview();
+}
+
 function renderDeptInventoryOverview(loadedAt) {
   const tbody = document.getElementById('dept-inv-tbody');
+  if (!invPeriod) {
+    document.getElementById('dept-inv-summary').innerHTML =
+      '棚卸し期がまだありません。「🆕 棚卸しを開始」で基準日（例：3/31・9/30）を指定すると、部署別の棚卸しリストが作成されます。';
+    tbody.innerHTML = '';
+    return;
+  }
   const sum = { done: 0, doing: 0, todo: 0, none: 0 };
   deptInvOverview.forEach(o => { sum[_deptInvStatus(o).key]++; });
   const t = loadedAt ? `${String(loadedAt.getHours()).padStart(2,'0')}:${String(loadedAt.getMinutes()).padStart(2,'0')}:${String(loadedAt.getSeconds()).padStart(2,'0')}` : '';
@@ -2803,7 +2963,7 @@ function renderDeptInventoryOverview(loadedAt) {
     `完了 <b>${sum.done}</b> 部署 ／ 入力中 <b>${sum.doing}</b> 部署 ／ 未着手 <b>${sum.todo}</b> 部署` +
     (sum.none ? ` ／ 対象なし ${sum.none} 部署` : '') +
     (t ? `　<span style="font-size:11px">最終読み込み ${t}</span>` : '') +
-    `<div style="font-size:11px;margin-top:4px">対象＝注文履歴のある商品。実数量0の入力も「入力済み」に数えます。最新の内容にするには「読み込み・更新」を押してください。</div>`;
+    `<div style="font-size:11px;margin-top:4px">対象＝${esc(_invBasisJa(invPeriod.basisDate))}までの注文履歴にある商品＋部署が追加した商品。実数量0の入力も「入力済み」に数えます。最新の内容にするには「読み込み・更新」を押してください。</div>`;
   if (!deptInvOverview.length) {
     tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;padding:20px;color:var(--muted)">部署がありません</td></tr>';
     return;
@@ -2818,7 +2978,7 @@ function renderDeptInventoryOverview(loadedAt) {
           <div style="flex:1;height:8px;background:#e8eef2;border-radius:4px;overflow:hidden;min-width:100px">
             <div style="width:${pct}%;height:100%;background:${st.color}"></div>
           </div>
-          <span style="font-size:12px;white-space:nowrap">${o.enteredCount} / ${o.targetCount}</span>
+          <span style="font-size:12px;white-space:nowrap">${o.enteredCount} / ${o.targetCount}${o.extraCount ? `（追加${o.extraCount}）` : ''}</span>
         </div>
       </td>
       <td style="font-size:12px">${esc(_fmtInvTime(o.lastUpdatedAt))}</td>
@@ -2832,18 +2992,19 @@ function renderDeptInventoryOverview(loadedAt) {
 async function openDeptInventoryDetail(deptId) {
   const o = deptInvOverview.find(x => x.deptId === deptId) || { deptName: deptId };
   const seq = ++deptInvDetailSeq;
-  currentDeptInvDetail = { deptName: o.deptName, rows: [] };
+  const basisDate = invPeriod ? invPeriod.basisDate : '';
+  currentDeptInvDetail = { deptName: o.deptName, basisDate, rows: [] };
   document.getElementById('dept-inv-detail-modal').style.display = 'flex';
-  document.getElementById('dept-inv-detail-title').textContent = '📋 ' + o.deptName + ' の棚卸し入力内容';
+  document.getElementById('dept-inv-detail-title').textContent = '📋 ' + o.deptName + ' の棚卸し入力内容' + (basisDate ? '（' + _invBasisJa(basisDate) + '時点）' : '');
   document.getElementById('dept-inv-detail-sub').textContent = '';
   const wrap = document.getElementById('dept-inv-detail-wrap');
   let rows = deptInvDetailCache[deptId];
   if (!rows) {
     wrap.innerHTML = '<div style="text-align:center;padding:24px;color:var(--muted);font-size:13px"><span class="spinner"></span></div>';
     try {
-      const res = await gasGet({ action: 'getDeptInventoryDetail', token: getToken(), deptId: deptId });
+      const res = await gasGet({ action: 'getDeptInventoryDetail', token: getToken(), deptId: deptId, periodId: invSelectedPeriodId });
       if (!res.ok) throw new Error(res.error);
-      rows = res.data || [];
+      rows = (res.data && res.data.rows) || [];
       deptInvDetailCache[deptId] = rows;
     } catch (e) {
       if (seq === deptInvDetailSeq) wrap.innerHTML = `<div style="text-align:center;padding:24px;color:var(--danger);font-size:13px">❌ ${esc(e.message)}</div>`;
@@ -2855,15 +3016,15 @@ async function openDeptInventoryDetail(deptId) {
   const entered = rows.filter(r => _isEntered(r.enteredQty)).length;
   document.getElementById('dept-inv-detail-sub').textContent = `入力済み ${entered} / ${rows.length} 品目（未入力の行は赤字で表示）`;
   if (!rows.length) {
-    wrap.innerHTML = '<div style="text-align:center;padding:24px;color:var(--muted);font-size:13px">対象商品がありません（注文履歴がありません）</div>';
+    wrap.innerHTML = '<div style="text-align:center;padding:24px;color:var(--muted);font-size:13px">対象商品がありません（基準日までの注文履歴がなく、追加された商品もありません）</div>';
     return;
   }
-  wrap.innerHTML = `<table><thead><tr><th>商品コード</th><th>品名</th><th>規格</th><th>単位</th><th>累計注文数</th><th>入力数量</th><th>入力日時</th></tr></thead><tbody>` +
+  wrap.innerHTML = `<table><thead><tr><th>商品コード</th><th>品名</th><th>規格</th><th>単位</th><th>基準日までの注文数</th><th>入力数量</th><th>入力日時</th></tr></thead><tbody>` +
     rows.map(r => {
       const done = _isEntered(r.enteredQty);
       return `<tr>
-        <td>${esc(r.code)}</td><td>${esc(r.name)}</td><td>${esc(r.spec || '')}</td><td>${esc(r.unit || '')}</td>
-        <td style="text-align:right">${esc(r.orderedQty)}</td>
+        <td>${esc(r.code)}</td><td>${esc(r.name)}${r.kind === '追加' ? ' <span style="font-size:10px;background:#fff8e6;color:#a06a00;border:1px solid #f0a500;border-radius:3px;padding:0 5px">追加</span>' : ''}</td><td>${esc(r.spec || '')}</td><td>${esc(r.unit || '')}</td>
+        <td style="text-align:right">${r.kind === '追加' ? '—' : esc(r.orderedQty)}</td>
         <td style="text-align:right;font-weight:700;${done ? '' : 'color:var(--danger)'}">${done ? esc(r.enteredQty) : '未入力'}</td>
         <td style="font-size:12px">${esc(_fmtInvTime(r.updatedAt))}</td>
       </tr>`;
@@ -2874,9 +3035,9 @@ async function openDeptInventoryDetail(deptId) {
 function exportDeptInventoryDetail() {
   const d = currentDeptInvDetail;
   if (!d.rows.length) { showToast('出力するデータがありません', 'error'); return; }
-  const headers = ['商品コード', '品名', '型番', '規格', '単位', '単価', '累計注文数', '実数量', '在庫金額', '記入日時'];
-  const rows = d.rows.map(r => [r.code, r.name, r.model || '', r.spec || '', r.unit || '', r.price || '', r.orderedQty, r.enteredQty, _invAmount(r.price, r.enteredQty), r.updatedAt || '']);
-  downloadExcel('棚卸し入力結果_' + d.deptName, headers, rows, [10, 24, 14, 14, 8, 10, 12, 10, 12, 18], d.deptName.slice(0, 28));
+  const headers = ['基準日', '商品コード', '品名', '型番', '規格', '単位', '単価', '基準日までの注文数', '実数量', '在庫金額', '区分', '記入日時'];
+  const rows = d.rows.map(r => [d.basisDate, r.code, r.name, r.model || '', r.spec || '', r.unit || '', r.price || '', r.kind === '追加' ? '' : r.orderedQty, r.enteredQty, _invAmount(r.price, r.enteredQty), r.kind || '', r.updatedAt || '']);
+  downloadExcel('棚卸し入力結果_' + d.deptName + (d.basisDate ? '_' + d.basisDate : ''), headers, rows, [12, 10, 24, 14, 14, 8, 10, 14, 10, 12, 10, 18], d.deptName.slice(0, 28));
   showToast('📊 ' + d.deptName + ' の入力内容をダウンロードしました', 'success');
 }
 
@@ -2884,14 +3045,16 @@ function exportDeptInventoryDetail() {
 async function exportAllDeptInventory(kind) {
   try {
     showToast('全部署の入力内容を取得しています（しばらくかかります）...', '');
-    const res = await gasGet({ action: 'getAllDeptInventoryRows', token: getToken() });
+    const res = await gasGet({ action: 'getAllDeptInventoryRows', token: getToken(), periodId: invSelectedPeriodId });
     if (!res.ok) throw new Error(res.error);
-    const data = res.data || [];
+    const data = (res.data && res.data.rows) || [];
+    const basis = (res.data && res.data.period) ? res.data.period.basisDate : '';
     if (!data.length) { showToast('出力するデータがありません', 'error'); return; }
-    const headers = ['部署ID', '部署名', '商品コード', '品名', '型番', '規格', '単位', '単価', '累計注文数', '実数量', '在庫金額', '記入日時', '記入者'];
-    const rows = data.map(r => [r.deptId, r.deptName, r.code, r.name, r.model || '', r.spec || '', r.unit || '', r.price || '', r.orderedQty, r.enteredQty, _invAmount(r.price, r.enteredQty), r.updatedAt || '', r.updatedBy || '']);
-    if (kind === 'csv') downloadCSV('部署別棚卸し入力結果', headers, rows);
-    else downloadExcel('部署別棚卸し入力結果', headers, rows, [8, 16, 10, 24, 14, 14, 8, 10, 12, 10, 12, 18, 14], '部署別棚卸し');
+    const headers = ['基準日', '部署ID', '部署名', '商品コード', '品名', '型番', '規格', '単位', '単価', '基準日までの注文数', '実数量', '在庫金額', '区分', '記入日時', '記入者'];
+    const rows = data.map(r => [basis, r.deptId, r.deptName, r.code, r.name, r.model || '', r.spec || '', r.unit || '', r.price || '', r.kind === '追加' ? '' : r.orderedQty, r.enteredQty, _invAmount(r.price, r.enteredQty), r.kind || '', r.updatedAt || '', r.updatedBy || '']);
+    const fname = '部署別棚卸し入力結果' + (basis ? '_' + basis : '');
+    if (kind === 'csv') downloadCSV(fname, headers, rows);
+    else downloadExcel(fname, headers, rows, [12, 8, 16, 10, 24, 14, 14, 8, 10, 14, 10, 12, 10, 18, 14], '部署別棚卸し');
     showToast('📊 全部署の入力内容をダウンロードしました（' + data.length + '行）', 'success');
   } catch (e) {
     showToast('❌ 出力に失敗しました: ' + e.message, 'error', 5000);

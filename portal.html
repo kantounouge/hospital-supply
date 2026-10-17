@@ -389,12 +389,29 @@ body{font-family:'Noto Sans JP',sans-serif;background:var(--bg);color:var(--text
             <button class="inline-panel-close" onclick="hideInventoryPanel()">閉じる</button>
           </div>
           <div style="padding:16px 20px">
-            <p style="font-size:12px;color:var(--muted);margin-bottom:14px;line-height:1.6">
-              自部署の発注履歴に基づいた商品一覧です。実数量を入力すると自動的に保存されます（iPadでそのまま入力できます）。<br>
+            <div id="inv-period-banner" style="display:none;margin-bottom:12px;padding:10px 12px;background:var(--primary-lt);border-radius:8px;font-size:13px;line-height:1.6"></div>
+            <p id="inv-help" style="font-size:12px;color:var(--muted);margin-bottom:14px;line-height:1.6">
+              棚卸し基準日までの発注履歴に基づいた商品一覧です（棚卸し開始後に注文した商品は含まれません）。実数量を入力すると自動的に保存されます（iPadでそのまま入力できます）。<br>
+              一覧にない商品が手元にある場合は、下の「リストにない商品を追加」から追加してください。<br>
               画面入力が難しい場合は「Excelで出力」して印刷し、手書きで記入したものを見ながら後から入力することもできます。
             </p>
-            <div style="margin-bottom:12px">
+            <div id="inv-actions" style="margin-bottom:12px;display:none;gap:8px;flex-wrap:wrap">
               <button onclick="exportDeptInventoryExcel()" style="padding:9px 16px;background:var(--primary);color:#fff;border:none;border-radius:7px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit">📊 Excelで出力（印刷・手書き用）</button>
+              <button onclick="toggleInvExtraForm()" style="padding:9px 16px;background:#fff;color:var(--primary);border:1.5px solid var(--primary);border-radius:7px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit">＋ リストにない商品を追加</button>
+            </div>
+            <div id="inv-extra-form" style="display:none;margin-bottom:12px;padding:12px;border:1.5px dashed var(--primary);border-radius:8px;background:#fafdfc">
+              <div style="font-size:12px;font-weight:700;margin-bottom:8px">リストにない商品を追加</div>
+              <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:8px">
+                <input id="inv-x-name"  placeholder="品名（必須）" maxlength="100" style="padding:8px 9px;border:1.5px solid var(--border);border-radius:7px;font-size:14px;font-family:inherit;grid-column:1/-1">
+                <input id="inv-x-model" placeholder="型番" style="padding:8px 9px;border:1.5px solid var(--border);border-radius:7px;font-size:14px;font-family:inherit">
+                <input id="inv-x-spec"  placeholder="規格" style="padding:8px 9px;border:1.5px solid var(--border);border-radius:7px;font-size:14px;font-family:inherit">
+                <input id="inv-x-unit"  placeholder="単位（既定：個）" style="padding:8px 9px;border:1.5px solid var(--border);border-radius:7px;font-size:14px;font-family:inherit">
+                <input id="inv-x-qty" type="number" inputmode="decimal" min="0" placeholder="実数量" style="padding:8px 9px;border:1.5px solid var(--border);border-radius:7px;font-size:14px;font-family:inherit;text-align:right">
+              </div>
+              <div style="margin-top:10px;display:flex;gap:8px">
+                <button id="inv-x-submit" onclick="submitInvExtraItem()" style="padding:9px 16px;background:var(--primary);color:#fff;border:none;border-radius:7px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit">追加する</button>
+                <button onclick="toggleInvExtraForm()" style="padding:9px 14px;background:#fff;color:var(--muted);border:1px solid var(--border);border-radius:7px;font-size:12px;cursor:pointer;font-family:inherit">キャンセル</button>
+              </div>
             </div>
             <div id="dept-inventory-table-wrap" style="max-height:420px;overflow-y:auto;border:1px solid var(--border);border-radius:8px">
               <div style="text-align:center;padding:24px;color:var(--muted);font-size:13px"><span class="spinner-inline"></span> 読み込み中...</div>
@@ -1113,7 +1130,14 @@ function showInventoryPanel(e) {
 }
 function hideInventoryPanel() { document.getElementById('inventory-panel').style.display = 'none'; }
 
-let currentDeptInventoryData = []; // Excel出力用にキャッシュ
+let currentDeptInventoryData = []; // Excel出力用・画面再描画用にキャッシュ
+let currentInvPeriod = null;       // 入力中の棚卸し期 { id, basisDate, ... }。期間外のときは null
+
+// 2026-03-31 → 2026年3月31日
+function _invDateJa(d) {
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(d || ''));
+  return m ? `${m[1]}年${Number(m[2])}月${Number(m[3])}日` : String(d || '');
+}
 
 async function loadDeptInventory() {
   const wrap = document.getElementById('dept-inventory-table-wrap');
@@ -1121,10 +1145,35 @@ async function loadDeptInventory() {
   try {
     const res = await gasGet({ action: 'getDeptInventoryForEdit', token: currentUser.token });
     if (!res.ok) throw new Error(res.error);
-    currentDeptInventoryData = res.data;
-    renderDeptInventoryTable(res.data);
+    const d = res.data || {};
+    currentInvPeriod = d.period || null;
+    currentDeptInventoryData = d.items || [];
+    applyInventoryPeriodState(d);
+    if (currentInvPeriod) renderDeptInventoryTable(currentDeptInventoryData);
   } catch(e) {
     wrap.innerHTML = `<div style="text-align:center;padding:24px;color:var(--danger);font-size:13px">❌ ${esc(e.message)}</div>`;
+  }
+}
+
+// 棚卸し期間中かどうかで、見出し・ボタン・表示を切り替える
+function applyInventoryPeriodState(d) {
+  const banner  = document.getElementById('inv-period-banner');
+  const actions = document.getElementById('inv-actions');
+  const help    = document.getElementById('inv-help');
+  const wrap    = document.getElementById('dept-inventory-table-wrap');
+  document.getElementById('inv-extra-form').style.display = 'none';
+  if (currentInvPeriod) {
+    banner.style.display = 'block';
+    banner.innerHTML = `📅 <b>棚卸し基準日：${esc(_invDateJa(currentInvPeriod.basisDate))}時点</b>　<span style="font-size:12px;color:var(--muted)">この日までの注文を元にした一覧です。</span>`;
+    actions.style.display = 'flex';
+    help.style.display = 'block';
+  } else {
+    banner.style.display = 'none';
+    actions.style.display = 'none';
+    help.style.display = 'none';
+    const last = d && d.lastClosed ? `<div style="margin-top:6px;font-size:12px">（直近の棚卸し：${esc(_invDateJa(d.lastClosed.basisDate))}時点・確定済み）</div>` : '';
+    wrap.innerHTML = `<div style="text-align:center;padding:28px 16px;color:var(--muted);font-size:13px;line-height:1.7">
+      現在は棚卸し期間ではありません。<br>総務課が棚卸しを開始すると、ここに入力画面が表示されます。${last}</div>`;
   }
 }
 
@@ -1132,29 +1181,32 @@ async function loadDeptInventory() {
 // 記入後は画面入力に戻って実数量を入力する運用を想定
 function exportDeptInventoryExcel() {
   if (!currentDeptInventoryData.length) { showToast('対象データがありません', 'error'); return; }
-  const headers = ['商品コード', '品名', '型番', '規格', '単位', '累計注文数', '実数量（記入欄）', '備考'];
+  const base = currentInvPeriod ? currentInvPeriod.basisDate : '';
+  const headers = ['商品コード', '品名', '型番', '規格', '単位', '基準日までの注文数', '実数量（記入欄）', '備考'];
   const rows = currentDeptInventoryData.map(it => [
-    it.code, it.name, it.model || '', it.spec || '', it.unit || '', it.orderedQty, '', '',
+    it.code, it.name, it.model || '', it.spec || '', it.unit || '', it.kind === '追加' ? '' : it.orderedQty, '', it.kind === '追加' ? '追加した商品' : '',
   ]);
-  downloadExcel('棚卸しリスト_' + currentUser.deptName, headers, rows, [10, 24, 14, 14, 8, 10, 14, 20], '棚卸し');
+  downloadExcel('棚卸しリスト_' + currentUser.deptName + (base ? '_' + base : ''), headers, rows, [10, 24, 14, 14, 8, 12, 14, 20], '棚卸し');
   showToast('📊 Excelをダウンロードしました。印刷して手書き記入後、画面入力欄に反映してください。', 'success', 4500);
 }
 
 function renderDeptInventoryTable(items) {
   const wrap = document.getElementById('dept-inventory-table-wrap');
   if (!items.length) {
-    wrap.innerHTML = '<div style="text-align:center;padding:24px;color:var(--muted);font-size:13px">対象の商品がありません（注文履歴がまだない場合は表示されません）</div>';
+    wrap.innerHTML = '<div style="text-align:center;padding:24px;color:var(--muted);font-size:13px">対象の商品がありません（基準日までの注文履歴がない場合は表示されません）。手元に商品がある場合は「リストにない商品を追加」から追加してください。</div>';
     return;
   }
-  const rows = items.map(it => `
+  const rows = items.map(it => {
+    const extra = it.kind === '追加';
+    return `
     <tr data-code="${esc(it.code)}">
       <td style="padding:8px 10px">
-        <div style="font-size:13px;font-weight:600">${esc(it.name)}</div>
+        <div style="font-size:13px;font-weight:600">${esc(it.name)}${extra ? ' <span style="font-size:10px;background:var(--accent-lt);color:#a06a00;border:1px solid var(--accent);border-radius:3px;padding:0 5px;vertical-align:middle">追加</span>' : ''}</div>
         <div style="font-size:11px;color:var(--muted)">${esc(it.model||'')}${it.spec?' / '+esc(it.spec):''}</div>
       </td>
-      <td style="padding:8px 10px;text-align:center;font-size:12px;color:var(--muted);white-space:nowrap">${it.orderedQty}${esc(it.unit||'')}</td>
+      <td style="padding:8px 10px;text-align:center;font-size:12px;color:var(--muted);white-space:nowrap">${extra ? '—' : esc(it.orderedQty) + esc(it.unit||'')}</td>
       <td style="padding:8px 10px;white-space:nowrap">
-        <input type="number" inputmode="decimal" class="inv-qty-input" data-code="${esc(it.code)}" data-name="${esc(it.name)}"
+        <input type="number" inputmode="decimal" min="0" class="inv-qty-input" data-code="${esc(it.code)}" data-name="${esc(it.name)}"
           value="${esc(it.enteredQty)}" placeholder="実数量"
           onblur="saveDeptInventoryItem(this)"
           onkeydown="if(event.key==='Enter')this.blur()"
@@ -1164,14 +1216,15 @@ function renderDeptInventoryTable(items) {
       <td style="padding:8px 6px;font-size:10px;color:var(--muted);white-space:nowrap" class="inv-saved-label">
         ${it.updatedAt ? '✅ '+esc(it.updatedAt.slice(5,16)) : ''}
       </td>
-    </tr>`).join('');
+    </tr>`;
+  }).join('');
 
   wrap.innerHTML = `
     <table style="width:100%;border-collapse:collapse;font-size:13px">
       <thead>
         <tr style="background:var(--bg);position:sticky;top:0">
           <th style="padding:8px 10px;text-align:left;font-size:11px;color:var(--muted)">品名</th>
-          <th style="padding:8px 10px;text-align:center;font-size:11px;color:var(--muted)">累計注文数</th>
+          <th style="padding:8px 10px;text-align:center;font-size:11px;color:var(--muted)">基準日までの注文数</th>
           <th style="padding:8px 10px;text-align:left;font-size:11px;color:var(--muted)">実数量</th>
           <th style="padding:8px 6px;font-size:11px;color:var(--muted)">保存</th>
         </tr>
@@ -1180,24 +1233,76 @@ function renderDeptInventoryTable(items) {
     </table>`;
 }
 
+// 棚卸し期が切り替わった／確定された場合は、メッセージを出して画面を読み直す
+function _invReloadIfPeriodChanged(msg) {
+  if (/再読み込み|棚卸し期間ではありません|切り替わり/.test(msg || '')) {
+    showToast(msg, 'error', 6000);
+    loadDeptInventory();
+    return true;
+  }
+  return false;
+}
+
 async function saveDeptInventoryItem(inputEl) {
   const code = inputEl.dataset.code;
   const name = inputEl.dataset.name;
   const qty  = inputEl.value.trim();
   if (qty === '') return; // 未入力ならスキップ
+  if (!currentInvPeriod) return;
+
+  // 内容が変わっていなければ保存しない（タップしただけで離れた場合の無駄な通信を防ぐ）
+  const cached = currentDeptInventoryData.find(x => x.code === code);
+  if (cached && String(cached.enteredQty) === qty) return;
 
   inputEl.style.borderColor = 'var(--primary)';
   try {
-    const res = await gasGet({ action: 'saveDeptInventoryItem', token: currentUser.token, code, name, qty });
+    const res = await gasGet({ action: 'saveDeptInventoryItem', token: currentUser.token, code, name, qty, periodId: currentInvPeriod.id });
     if (!res.ok) throw new Error(res.error);
     inputEl.style.borderColor = '';
     const label = inputEl.closest('tr').querySelector('.inv-saved-label');
     const now = new Date();
-    label.textContent = '✅ ' + `${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')} ${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}`;
+    const stamp = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')} ${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}:00`;
+    label.textContent = '✅ ' + stamp.slice(5,16);
+    if (cached) { cached.enteredQty = Number(qty); cached.updatedAt = stamp; }
     showToast('📝 保存しました', 'success', 1500);
   } catch(e) {
     inputEl.style.borderColor = 'var(--danger)';
-    showToast('保存に失敗しました: ' + e.message, 'error');
+    if (!_invReloadIfPeriodChanged(e.message)) showToast('保存に失敗しました: ' + e.message, 'error');
+  }
+}
+
+// ── リストにない商品の追加 ──
+function toggleInvExtraForm() {
+  const f = document.getElementById('inv-extra-form');
+  const show = f.style.display === 'none';
+  f.style.display = show ? 'block' : 'none';
+  if (show) document.getElementById('inv-x-name').focus();
+}
+
+async function submitInvExtraItem() {
+  if (!currentInvPeriod) return;
+  const g = id => document.getElementById(id).value.trim();
+  const name = g('inv-x-name');
+  if (!name) { showToast('品名を入力してください', 'error'); return; }
+  const btn = document.getElementById('inv-x-submit');
+  btn.disabled = true;
+  try {
+    const res = await gasGet({
+      action: 'addDeptInventoryExtraItem', token: currentUser.token, periodId: currentInvPeriod.id,
+      name, model: g('inv-x-model'), spec: g('inv-x-spec'), unit: g('inv-x-unit'), qty: g('inv-x-qty'),
+    });
+    if (!res.ok) throw new Error(res.error);
+    currentDeptInventoryData.push(res.data);
+    renderDeptInventoryTable(currentDeptInventoryData);
+    ['inv-x-name','inv-x-model','inv-x-spec','inv-x-unit','inv-x-qty'].forEach(id => { document.getElementById(id).value = ''; });
+    document.getElementById('inv-extra-form').style.display = 'none';
+    showToast('＋ 「' + name + '」を追加しました', 'success');
+    const wrap = document.getElementById('dept-inventory-table-wrap');
+    wrap.scrollTop = wrap.scrollHeight;
+  } catch(e) {
+    if (!_invReloadIfPeriodChanged(e.message)) showToast('追加に失敗しました: ' + e.message, 'error', 5000);
+  } finally {
+    btn.disabled = false;
   }
 }
 
