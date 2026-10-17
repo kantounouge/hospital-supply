@@ -1056,7 +1056,17 @@ function gasGetJSONP(params) {
 }
 
 // fetch方式（JSONPが失敗した場合のフォールバック）
+// ★第8版追加（診断用）：サーバー側の実行内訳（応答の _srv）を、ブラウザ側の所要時間と並べて出力する
+function _logSrv(params, res, clientMs) {
+  try {
+    const s = res && res._srv; if (!s) return;
+    console.log('[診断][サーバー内訳] ' + params.action + ': 実行内の合計' + s.totalMs + 'ms（認証' + s.sessionMs + 'ms／スプレッドシートを開く' +
+      s.openMs + 'ms×' + s.openCalls + '回／それ以外' + s.bodyMs + 'ms）→ ブラウザ側の合計' + Math.round(clientMs) + 'ms ＝ 実行内以外 ' +
+      Math.round(clientMs - s.totalMs) + 'ms');
+  } catch (e) { /* 診断のための出力なので、失敗しても通信には影響させない */ }
+}
 async function gasGetFetch(params, timeoutMs) {
+  const _tSrv0 = performance.now();   // ★第8版：診断用
   const qs = Object.entries(params)
     .map(([k, v]) => encodeURIComponent(k) + '=' + encodeURIComponent(v ?? ''))
     .join('&');
@@ -1088,7 +1098,7 @@ async function gasGetFetch(params, timeoutMs) {
   } finally {
     if (_timer) clearTimeout(_timer);
   }
-  try { return JSON.parse(text); }
+  try { const _j = JSON.parse(text); _logSrv(params, _j, performance.now() - _tSrv0); return _j; }
   catch {
     // ★診断用：JSON以外（HTML等）が返ってきた場合、その中身をコンソールに出力する
     // （原因が判明したら削除してよい）
